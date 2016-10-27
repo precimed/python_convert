@@ -370,8 +370,7 @@ if __name__ == "__main__":
     tsts = time.time()
     convert_sum()
     print
-    print 'Finish at %s' % time.ctime()
+    print ('Finish at {}'.format(time.ctime()))
     ted = time.time()
-    print 'Time taken %d mins %d sec' % ((ted-tsts)//60, np.round(ted-tsts) %
-            60)
+    print ('Time taken {} mins {} sec'.format((ted-tsts)//60, np.round(ted-tsts) % 60))
 

@@ -1,6 +1,7 @@
 import sys, os, re, logging, datetime
 import numpy as np
 import pandas as pd
+from six import iteritems
 from pkg_resources import parse_version
 
 pdlow = parse_version(pd.__version__) < parse_version('0.17.0')
@@ -55,36 +56,36 @@ def read_sumdata(sumFile, snpCol, pCol, kargs):
                         recode chrM--> 25
 
     '''
-    print pd.__version__
+    print(pd.__version__)
     if type(kargs) != dict:
         try:
             kargs = vars(kargs)
         except:
             raise
     if not os.access(sumFile, os.R_OK):
-        raise ValueError, 'Unable to read summary file: %s' % (sumFile)
+        raise ValueError('Unable to read summary file: %s' % (sumFile))
     try:
         if 'sep' in kargs:
             sumDat = pd.read_table(sumFile, sep=kargs['sep'])
         else:
             sumDat = pd.read_table(sumFile)
-            print sumDat.columns
-            print sumDat.shape
+            print(sumDat.columns)
+            print(sumDat.shape)
         if sumDat.shape[1] <2: 
             sumDat = pd.read_table(sumFile, sep=' *')
             if sumDat.shape[1] < 2:
                 sumDat = pd.read_table(sumFile, sep='[ +|\t]', engine='python')
                 if sumDat.shape[1] < 2:
-                    raise (ValueError, 
+                    raise (ValueError(
                       "Can't figure out delimiter in %s: tab or space" % (
-                          sumFile,))
+                          sumFile,)))
     except:
         raise
     try:
         sumDat.loc[:,pCol] = sumDat.loc[:,pCol].astype('float') 
         sumDat.rename(columns={snpCol:'SNP', pCol:'P'},inplace=True)
-        for k, v in kargs.iteritems():
-            print k, v
+        for k, v in iteritems(kargs):
+            print('{} {}'.format(k, v))
             if v== None:
                 continue
             if k == 'effCol': 
@@ -147,10 +148,10 @@ def deduplcate_sum(sumDat, pCol, keys):
     if type(keys) == str:
         keys = [keys]
     if pCol not in sumDat.columns:
-        raise ValueError, '%s not in columns names' % (pCol,)
+        raise ValueError('%s not in columns names' % (pCol,))
     for k in keys:
         if k not in sumDat.columns:
-            raise ValueError, '%s not in columns names' % (k,)
+            raise ValueError('%s not in columns names' % (k,))
     dup_idx = sumDat.duplicated(subset=keys, keep=False)
     cleanDat = sumDat.loc[dup_idx==False,:]
     dup = sumDat.loc[dup_idx,:]
@@ -183,9 +184,9 @@ def map_snps(dat1, dat2, rsufix, keys, clean=True):
         keys = [keys]
     for k in keys:
         if k not in dat1.columns:
-            raise ValueError, '%s not in columns names of dat1' % (k,)
+            raise ValueError('%s not in columns names of dat1' % (k,))
         if k not in dat2.columns:
-            raise ValueError, '%s not in columns names of dat2' % (k,)
+            raise ValueError('%s not in columns names of dat2' % (k,))
     tmpD1 = dat1.set_index(keys = list(keys), drop=False)
     tmpD2 = dat2.set_index(keys = list(keys), drop=False)
     mDat = tmpD1.join(tmpD2, rsuffix=rsufix, how='left', sort=False)
@@ -218,7 +219,7 @@ def basic_QC_P(sumDat, outdir, pCol='P', logger=None):
 
     '''
     if pCol not in sumDat.columns:
-        raise (ValueError, '{} not in the data frame.'.format(pCol))
+        raise (ValueError('{} not in the data frame.'.format(pCol)))
     Idx = ((sumDat.loc[:, pCol] <=1.0) & (sumDat.loc[:, pCol]>=0))
     if not logger:
         logger = logging.getLogger()
@@ -256,7 +257,7 @@ def basic_QC_Info(sumDat, outdir, infoCol='INFO', infoTh=0.5, logger=None):
 
     '''
     if infoCol not in sumDat.columns:
-        raise (ValueError, '{} not in the data frame.'.format(infoCol))
+        raise (ValueError('{} not in the data frame.'.format(infoCol)))
     Idx = ((sumDat.loc[:,infoCol] <=1.05) & (sumDat.loc[:,infoCol]>=infoTh))
     if not logger:
         logger = logging.getLogger()
@@ -294,7 +295,7 @@ def basic_QC_Freq(sumDat, outdir, freqCol='Freq', freqTh=0.05, logger=None):
 
     '''
     if freqCol not in sumDat.columns:
-        raise (ValueError, '{} not in the data frame.'.format(freqCol))
+        raise (ValueError('{} not in the data frame.'.format(freqCol)))
     Idx = ((sumDat.loc[:,freqCol] >= freqTh) & 
             (sumDat.loc[:,freqCol] <= 1-freqTh))
     if not logger:
@@ -336,9 +337,9 @@ def basic_QC_Freq2(sumDat, outdir, freqACol, freqUCol, freqTh=0.8, logger=None):
 
     '''
     if freqACol not in sumDat.columns:
-        raise (ValueError, '{} not in the data frame.'.format(freqACol))
+        raise (ValueError('{} not in the data frame.'.format(freqACol)))
     if freqUCol not in sumDat.columns:
-        raise (ValueError, '{} not in the data frame.'.format(freqUCol))
+        raise (ValueError('{} not in the data frame.'.format(freqUCol)))
     IdxA = ((sumDat.loc[:, freqACol] >= freqTh) & 
              (sumDat.loc[:, freqACol] <= (1-freqTh)))
     IdxU = ((sumDat.loc[:, freqUCol] >= freqTh) & 
@@ -387,7 +388,7 @@ def basic_QC_direct(sumDat, outdir, dirCol='DIR', dirMth=1, dirDth=.5,
 
     '''
     if dirCol not in sumDat.columns:
-        raise (ValueError, '{} not in the data frame.'.format(dirCol))
+        raise (ValueError('{} not in the data frame.'.format(dirCol)))
     plus = sumDat.loc[:,dirCol].str.count('\\'+dirPos)
     minus = sumDat.loc[:,dirCol].str.count('\\'+dirNeg)
     miss = sumDat.loc[:,dirCol].str.count('\\'+dirMis)
