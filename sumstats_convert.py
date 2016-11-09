@@ -260,7 +260,7 @@ if __name__ == "__main__":
     # python sumstats_convert.py csv ../data/pgc/cross_disorder/pgc.cross.AUT8.2013-05_tabs.txt ../projects/adhd/cond_fdr/2m_template/2558411_ref.bim ../tmp/pgc_aut_2013_2m.csv --effect or --ref-id SNP --ref-a1 A1 --ref-a2 A2
     # python sumstats_convert.py csv ../data/pgc/cross_disorder/pgc.cross.MDD9.2013-05_tabs.txt ../projects/adhd/cond_fdr/2m_template/2558411_ref.bim ../tmp/pgc_mdd_2013_2m.csv --effect or --ref-id SNP --ref-a1 A1 --ref-a2 A2
     # python sumstats_convert.py csv ../data/pgc/cross_disorder/pgc.cross.SCZ17.2013-05_tabs.txt ../projects/adhd/cond_fdr/2m_template/2558411_ref.bim ../tmp/pgc_scz_2013_2m.csv --effect or --ref-id SNP --ref-a1 A1 --ref-a2 A2
-    # python sumstats_convert.py csv ../data/ssgac/SSGAC_College_Rietveld2013_publicrelease.txt  ../projects/adhd/cond_fdr/2m_template/2558411_ref.bim ../tmp/ssgac_college2013_2m.csv --id MarkerName --effect --pval Pvalue --effectA Effect_Allele --otherA Other_Allele --ref-id SNP --ref-a1 A1 --ref-a2 A2
+    # python sumstats_convert.py csv ../data/ssgac/SSGAC_College_Rietveld2013_publicrelease.txt  ../projects/adhd/cond_fdr/2m_template/2558411_ref.bim ../tmp/ssgac_college2013_2m.csv --id MarkerName --effect OR --pval Pvalue --effectA Effect_Allele --otherA Other_Allele --ref-id SNP --ref-a1 A1 --ref-a2 A2
 
     # mat task
     # python sumstats_convert.py mat ../projects/adhd/cond_fdr/2m_template/2558411_ref.bim ../tmp/pgc_adhd_y_2m_info08_snp_maf001.csv --ref-id SNP --traits adhd_y
