@@ -80,3 +80,15 @@ For more details about available arguments use:
 ```
 python sumstats_convert.py --help
 ```
+
+
+## make_ld_matrix.py
+
+Make LD matrix from reference data. Output either in matlab format or as dense lower triangular text file.
+To run this tool you need to download reference data from http://ctg.cncr.nl/software/magma (for example g1000_eur).
+Example:
+```
+python make_ld_matrix.py --ref 2558411_ref.bim --bfile g1000_eur --ld_window_r2 0.1 --savemat ldmat_p1.mat
+```
+For more info run `python make_ld_matrix.py --help`.
+```
