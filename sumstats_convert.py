@@ -81,16 +81,18 @@ def make_csv(args):
     """
     if os.path.isfile(args.output_file):
         raise ValueError("Output file already exists!")
-        
-    with open(args.ref_file) as ref_f:
-        header = ref_f.readline().rstrip().split('\t')
-        iid = header.index(args.ref_id)
-        ia1 = header.index(args.ref_a1)
-        ia2 = header.index(args.ref_a2)
-        ref_dict = {sl[iid]: (sl[ia1]+sl[ia2]).upper()
-            for sl in (ll.rstrip().split('\t') for ll in ref_f)}
-        ref_dict = {i: (aa, COMPLEMENT[aa], aa[::-1], COMPLEMENT[aa[::-1]])
+
+    usecols = [args.ref_id, args.ref_a1, args.ref_a2]
+    reader = pd.read_table(args.ref_file, sep='\t', usecols=usecols,
+        chunksize=args.chunksize)
+    ref_dict = {}
+    for chunk in reader:
+        gtypes = (chunk[args.ref_a1] + chunk[args.ref_a2]).apply(str.upper)
+        #TODO?: add check whether some id is already in ref_dict
+        ref_dict.update(dict(zip(chunk[args.ref_id], gtypes)))
+    ref_dict = {i: (aa, COMPLEMENT[aa], aa[::-1], COMPLEMENT[aa[::-1]])
             for i, aa in ref_dict.items()}
+
     print("Reference dict contains %d snps." % len(ref_dict))
 
     out_columns = ["snpid", "pvalue", "zscore"]
@@ -122,6 +124,7 @@ def make_csv(args):
             # calculation below).
             not_ref_effect = np.array([-1 if gt in ref_dict[sid][:2] else 1
                 for sid, gt in zip(chunk[args.id], gtypes)])
+            #TODO: check proportion of positive and negative effects
             if args.signed_effect:
                 # effect column has str type
                 # -1 if effect starts with '-' else 1
@@ -129,6 +132,9 @@ def make_csv(args):
             else:
                 # effect column has np.float type
                 # 1 if effect >=1 else -1
+                if (chunk[args.effect] < 0).any():
+                    raise ValueError("Effect column contains negative values, "
+                        "but --signed-effect option was not used.")
                 effect_sign = np.sign(chunk[args.effect].values - 1)
                 effect_sign[effect_sign == 0] = 1
             effect_sign *= not_ref_effect
@@ -136,6 +142,7 @@ def make_csv(args):
             ind_ambiguous = [j for j,gt in enumerate(gtypes) if gt in AMBIGUOUS]
             # set zscore of ambiguous SNPs to nan
             zvect[ind_ambiguous] = np.nan
+            #TODO: check whether output df contains duplicated rs-ids (warn)
             df = pd.DataFrame({"pvalue": log10pv, "zscore":zvect},
                 index=chunk[args.id])
             df.to_csv(out_f, index=True, header=False, sep='\t', na_rep='NA')
@@ -169,14 +176,14 @@ def make_mat(args):
         if os.path.isfile(mat_f):
             raise ValueError("%s output file already exists!" % mat_f)
 
-    with open(args.ref_file) as ref_f:
-        header = ref_f.readline().rstrip().split('\t')
-        iid = header.index(args.ref_id)
-        ref_snps = [l.rstrip().split('\t')[iid] for l in ref_f]
+    ref_snps = pd.read_table(args.ref_file, sep='\t', usecols=[args.ref_id],
+        squeeze=True)
+    #TODO?: add check whether ref_snps contains duplicates
     print("Reference file contains %d snps" % len(ref_snps))
 
     for csv_f, mat_f, trait in zip(args.csv_files, args.mat_files, args.traits):
         df_out = pd.DataFrame(columns=["pvalue", "zscore"], index=ref_snps)
+        #TODO: check whether input df contains duplicated rs-ids (error)
         df = pd.read_csv(csv_f, sep='\t', index_col=0)
         df_out["pvalue"] = df["pvalue"]
         df_out["zscore"] = df["zscore"]
