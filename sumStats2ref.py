@@ -45,7 +45,7 @@ def read_sum_dat(sumFile, logger, kargs):
     sumDat = read_sumdata(sumFile, kargs.snpCol, kargs.pCol, kargs)
     logger.info('......')
     logger.info('Read {} SNPs'.format(sumDat.shape[0]))
-    colnames = ['SNP', 'P', 'A1', 'CHR', 'POS', 'Beta', 'A2']
+    colnames = ['SNP', 'P', 'A1', 'CHR', 'POS', 'Beta', 'A2', 'SIGN']
     if 'P' not in sumDat.columns:
         raise RuntimeError('No P value provided')
     if 'SNP' not in sumDat.columns:
@@ -61,14 +61,15 @@ def read_sum_dat(sumFile, logger, kargs):
     if not kargs.effCol:
         if not kargs.orCol:
             colnames.remove('Beta')
-            logger.warn('Directionality is not checked')
         else:
             sumDat.loc[:, 'Beta'] = np.log(sumDat.loc[:, 'OR'])
             sumDat.drop('OR', axis=1, inplace=True)
     if (not kargs.effACol) and (not kargs.othACol):
-        logger.warn('Directionality is not checked')
         colnames.remove('Beta')
         sumDat.drop('Beta', axis=1, inplace=True)
+    if 'SIGN' not in sumDat:
+        logger.warn('Directionality is not checked')
+        colnames.remove('SIGN')
     if ((not kargs.posCol) or (not kargs.chrCol)) and (not kargs.chrPosCol):
         logger.info('Using SNP ID only for align Summary data to reference')
         colnames.remove('POS')
@@ -282,7 +283,7 @@ def align2ref(sumDat, refDat, outdir, logger, kargs):
             idx1 = (((mDat.A1==mDat.refA1)&(mDat.A2==mDat.refA2)) | ((mDat.A1==mDat.A1c)&(mDat.A2==mDat.A2c))).values
             idx_1 = (((mDat.A1==mDat.refA2)&(mDat.A2==mDat.refA1)) | ((mDat.A1==mDat.A2c)&(mDat.A2==mDat.A1c))).values
     signvec[idx1] = 1.0; signvec[idx_1] = -1.0; signvec[ambivec] = np.nan
-    signvec = signvec * np.sign(mDat.loc[:,'Beta'].values)
+    signvec = signvec * mDat.loc[:,'SIGN'].values
     zvec = np.abs(stats.norm.ppf(mDat.loc[:,'P'].values * 0.5)) * signvec
     logger.info('{} SNPs have direction opposite to refference and changed'.format(np.sum(idx_1)))
     mDat.loc[:, 'newZ'] = zvec

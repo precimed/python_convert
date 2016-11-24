@@ -6,6 +6,9 @@ from pkg_resources import parse_version
 
 pdlow = parse_version(pd.__version__) < parse_version('0.17.0')
 
+def _get_str_list_sign(str_list):
+    return np.array([-1 if e[0]=='-' else 1 for e in str_list], dtype=np.int)
+
 def _fix_chromosome_labels(sumDat, v='CHR'):
     sumDat.loc[:,v] = pd.Series([re.sub('[chrCHR]','',
         str(c)) for c in sumDat.loc[:,v]])
@@ -65,16 +68,17 @@ def read_sumdata(sumFile, snpCol, pCol, kargs):
     if not os.access(sumFile, os.R_OK):
         raise ValueError('Unable to read summary file: %s' % (sumFile))
     try:
+        dtype_map = {kargs['effCol']: str} if kargs['effCol'] else {}
         if 'sep' in kargs:
-            sumDat = pd.read_table(sumFile, sep=kargs['sep'])
+            sumDat = pd.read_table(sumFile, sep=kargs['sep'], dtype=dtype_map)
         else:
-            sumDat = pd.read_table(sumFile)
+            sumDat = pd.read_table(sumFile, dtype=dtype_map)
             print(sumDat.columns)
             print(sumDat.shape)
         if sumDat.shape[1] <2: 
-            sumDat = pd.read_table(sumFile, sep=' *')
+            sumDat = pd.read_table(sumFile, sep=' *', dtype=dtype_map)
             if sumDat.shape[1] < 2:
-                sumDat = pd.read_table(sumFile, sep='[ +|\t]', engine='python')
+                sumDat = pd.read_table(sumFile, sep='[ +|\t]', engine='python', dtype=dtype_map)
                 if sumDat.shape[1] < 2:
                     raise (ValueError(
                       "Can't figure out delimiter in %s: tab or space" % (
@@ -84,6 +88,18 @@ def read_sumdata(sumFile, snpCol, pCol, kargs):
     try:
         sumDat.loc[:,pCol] = sumDat.loc[:,pCol].astype('float') 
         sumDat.rename(columns={snpCol:'SNP', pCol:'P'},inplace=True)
+        if kargs['effCol']:
+            # effect column has str type
+            # -1 if effect starts with '-' else 1
+            sumDat.loc[:,'SIGN'] = _get_str_list_sign(sumDat[kargs['effCol']])
+        elif kargs['orCol'] :
+            # effect column has np.float type
+            # 1 if effect >=1 else -1
+            if (sumDat[kargs['orCol']] < 0).any():
+                raise ValueError("{} column contains negative values; consider using --effCol instead of --orCol".format(kargs['orCol']))
+            effect_sign = np.sign(sumDat.loc[:, kargs['orCol']] - 1)
+            effect_sign[effect_sign == 0] = 1             # ToBe discussed --- how do we interpred OR == 1.0
+            sumDat.loc[:,'SIGN'] = effect_sign
         for k, v in iteritems(kargs):
             print('{} {}'.format(k, v))
             if v== None:
