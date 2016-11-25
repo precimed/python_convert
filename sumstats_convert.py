@@ -62,7 +62,7 @@ def parse_args(args):
         help="Output mat files.")
     parser_mat.add_argument("--traits", type=str, nargs='+', default=None,
         help="Trait names that will be used in mat files.")
-    parser_mat.add_argument("--ref-id", default="snpid", type=str,
+    parser_mat.add_argument("--ref-id", default="SNP", type=str,
         help="Id column in reference file.")
     parser_mat.set_defaults(func=make_mat)
 
