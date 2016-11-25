@@ -6,7 +6,7 @@ import scipy.io as sio
 import os
 import sys
 import argparse
-
+from summary_stats_Utils import *
 
 def get_str_list_sign(str_list):
     return np.array([-1 if e[0]=='-' else 1 for e in str_list], dtype=np.int)
@@ -30,23 +30,23 @@ def parse_args(args):
     parser_csv.add_argument("ref_file", type=str,
         help="Tab-separated file with list of referense SNPs.")
     parser_csv.add_argument("output_file", type=str, help="Output csv file.")
-    parser_csv.add_argument("--id", default="snpid", type=str,
+    parser_csv.add_argument("--id", default=None, type=str,
         help="SNP id column.")
-    parser_csv.add_argument("--pval", default="pval", type=str,
+    parser_csv.add_argument("--pval", default=None, type=str,
         help="P-value column.")
-    parser_csv.add_argument("--effectA", default="a1", type=str,
+    parser_csv.add_argument("--effectA", default=None, type=str,
         help="Effect allele column.")
-    parser_csv.add_argument("--otherA", default="a2", type=str,
+    parser_csv.add_argument("--otherA", default=None, type=str,
         help="Other allele column.")
-    parser_csv.add_argument("--effect", default="effect", type=str,
+    parser_csv.add_argument("--effect", default=None, type=str,
         help="Effect column.")
     parser_csv.add_argument("--signed-effect", action="store_true",
         default=False, help="Effect is signed.")
-    parser_csv.add_argument("--ref-id", default="snpid", type=str,
+    parser_csv.add_argument("--ref-id", default="SNP", type=str,
         help="Id column in reference file.")
-    parser_csv.add_argument("--ref-a1", default="a1", type=str,
+    parser_csv.add_argument("--ref-a1", default="A1", type=str,
         help="First allele column in reference file.")
-    parser_csv.add_argument("--ref-a2", default="a2", type=str,
+    parser_csv.add_argument("--ref-a2", default="A2", type=str,
         help="Second allele column in reference file.")
     parser_csv.add_argument("--chunksize", default=100000, type=int,
         help="Size of chunck to read the file.")
@@ -82,6 +82,25 @@ def make_csv(args):
     if os.path.isfile(args.output_file):
         raise ValueError("Output file already exists!")
 
+    cname_translation = find_column_name_translation(args.sumstats_file,
+        snp=args.id, p=args.pval, a1=args.effectA, a2=args.otherA,
+        odds_ratio=args.effect if not args.signed_effect else None,
+        beta=args.effect if args.signed_effect else None)
+    cname_description = {x: describe_cname[cname_translation[x]] for x in cname_translation if cname_translation[x] != 'UNKNOWN'}
+    print('Interpreting column names from summary statistics file as follows:')
+    print('\n'.join([x + ':\t' + cname_description[x] for x in cname_description]) + '\n')
+    cname_skip = [x for x in cname_translation if cname_translation[x ] == 'UNKNOWN']
+    if cname_skip: print('Skip the remaining columns ({}).'.format(', '.join(cname_skip)))
+    cname = {v: k for k, v in iteritems(cname_translation)}  # inverse mapping (ignore case when key has multiple values)
+    if not args.id: args.id = cname.get('SNP')
+    if not args.pval: args.pval = cname.get('P')
+    if not args.effectA: args.effectA = cname.get('A1')
+    if not args.otherA: args.otherA = cname.get('A2')
+    if not args.effect:
+        args.effect = next(iter(filter(None, [cname.get('BETA'), cname.get('LOG_ODDS'), cname.get('Z'), cname.get('OR')])), None)
+        args.signed_effect = False if 'OR' in cname else True
+
+    print('Reading reference file {}...'.format(args.ref_file))
     usecols = [args.ref_id, args.ref_a1, args.ref_a2]
     reader = pd.read_table(args.ref_file, sep='\t', usecols=usecols,
         chunksize=args.chunksize)
@@ -95,6 +114,7 @@ def make_csv(args):
 
     print("Reference dict contains %d snps." % len(ref_dict))
 
+    print('Reading summary statistics file {}...'.format(args.sumstats_file))
     out_columns = ["snpid", "pvalue", "zscore"]
     col_attr = ["id", "pval", "effectA", "otherA", "effect"]
     usecols = [getattr(args, c) for c in col_attr]

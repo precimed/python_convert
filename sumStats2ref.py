@@ -4,6 +4,7 @@ import scipy.stats as stats
 import scipy.io as sio
 import os, sys, argparse, time, logging, getpass
 import matplotlib.pyplot as plt
+from six import iteritems
 from summary_stats_Utils import *
 
 def read_sum_dat(sumFile, logger, kargs):
@@ -355,6 +356,26 @@ def convert_sum():
     logger = logging.getLogger()
     logger.addHandler(logging.FileHandler(logfile))
     logger.setLevel(logging.DEBUG)
+
+    cname_translation = find_column_name_translation(args.F,
+        snp=args.snpCol, chromosome=args.chrCol, pos=args.posCol,
+        a1=args.effACol, a2=args.othACol,
+        p=args.pCol, odds_ratio=args.orCol, beta=args.effCol)
+    cname_description = {x: describe_cname[cname_translation[x]] for x in cname_translation if cname_translation[x] != 'UNKNOWN'}
+    print('Interpreting column names as follows:')
+    print('\n'.join([x + ':\t' + cname_description[x] for x in cname_description]) + '\n')
+    cname_skip = [x for x in cname_translation if cname_translation[x ] == 'UNKNOWN']
+    if cname_skip: print('Skip the remaining columns ({}).'.format(', '.join(cname_skip)))
+    cname = {v: k for k, v in iteritems(cname_translation)}  # inverse mapping (ignore case when key has multiple values)
+    if not args.snpCol: args.snpCol = cname.get('SNP')
+    if not args.pCol: args.pCol = cname.get('P')
+    if not args.effACol: args.effACol = cname.get('A1')
+    if not args.othACol: args.othACol = cname.get('A2')
+    if not args.effCol: args.effCol = next(iter(filter(None, [cname.get('BETA'), cname.get('LOG_ODDS'), cname.get('Z')])), None)
+    if not args.orCol: args.orCol = cname.get('OR')
+    if not args.posCol: args.posCol = cname.get('POS')
+    if not args.chrCol: args.chrCol = cname.get('CHR')
+
     sumDat = read_sum_dat(args.F, logger, args)
     if args.Ref:
         refDat = read_ref_dat(args.Ref, logger)
