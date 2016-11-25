@@ -326,8 +326,8 @@ def convert_sum():
     parser.add_argument('--forceID', action='store_true', default=False,
             help='Force using SNP ID other than position')
     parser.add_argument('--snpCol', type=str, help='SNP ID field', 
-            default='SNP')
-    parser.add_argument('--pCol', type=str, help='P value field', default='P')
+            default=None)
+    parser.add_argument('--pCol', type=str, help='P value field', default=None)
     parser.add_argument('--effACol', type=str, help='Effective allele field', 
             default=None)
     parser.add_argument('--othACol', type=str, help='The other allele field', 

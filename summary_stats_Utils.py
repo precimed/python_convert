@@ -29,9 +29,11 @@ default_cnames = {
     'RS_NUMBERS': 'SNP',
     # CHROMOSOME
     'CHR': 'CHR',
+    'CHROMOSOME' : 'CHR',
     # POSITION
     'POS': 'POS',
     'BP': 'POS',
+    'POSITION' : 'POS',
     # NUMBER OF STUDIES
     'NSTUDY': 'NSTUDY',
     'N_STUDY': 'NSTUDY',
@@ -658,8 +660,7 @@ def find_column_name_translation(sumstats, snp=None, chromosome=None, pos=None,
 
         cname_map[frq_u] = 'FRQ'
 
-    file_cnames_clean = [clean_header(x) for x in file_cnames]
-    cname_translation = {x: cname_map.get(x, 'UNKNOWN') for x in file_cnames_clean}  # note keys not cleaned
+    cname_translation = {x: cname_map.get(clean_header(x), 'UNKNOWN') for x in file_cnames}  # note keys not cleaned
 
     # In the original version the code here performed the following validation
     # 1. One and only one signed sumstat column is found (unless a1_inc is not None)
