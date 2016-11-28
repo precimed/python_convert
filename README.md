@@ -1,6 +1,5 @@
 # Python tools to work with summary statistics
 
-
 ## sumStats2ref.py 
 Python tool to load in raw summary statistics and align them to 2.5M or 9M SNPs template.
 
@@ -91,4 +90,18 @@ Example:
 python make_ld_matrix.py --ref 2558411_ref.bim --bfile g1000_eur --ld_window_r2 0.1 --savemat ldmat_p1.mat
 ```
 For more info run `python make_ld_matrix.py --help`.
+
+## Unit tests
+
+To run unit tests type `py.test` (staying at the root of this repository).
+```
+C:\Users\Oleksandr\Documents\GitHub\python_convert>py.test
+============================= test session starts =============================
+platform win32 -- Python 3.5.2, pytest-2.9.2, py-1.4.31, pluggy-0.3.1
+rootdir: C:\Users\Oleksandr\Documents\GitHub\python_convert, inifile:
+collected 2 items
+
+tests\test_consistent.py ..
+
+========================== 2 passed in 16.71 seconds ==========================
 ```
