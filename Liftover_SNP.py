@@ -10,7 +10,7 @@ from pyliftover import LiftOver
 
 Intro = r'''
 Lifting SNPs 'rs' number and genomic position across different builds.
-
+Option --find-build require biopython. Install it with "pip install biopython".
 Lift 'rs' number:
 ----------------
     1. Based on NCBI SNP merge and history files: RsMergeArch and SNPHistory
@@ -48,13 +48,13 @@ The results after running the script will be stored in the following files, wher
 def myopen(fn):
     import gzip
     try:
-        h = gzip.open(fn)
+        h = gzip.open(fn, mode='rt')
         ln = h.read(2) # read arbitrary bytes so check if @param fn is a gzipped file
     except:
         # cannot read in gzip format
-        return open(fn)
+        return open(fn, mode='rt')
     h.close()
-    return gzip.open(fn)
+    return gzip.open(fn, mode='rt')
 
 def read_rs_history(histFile):
     RS_HISTORY = set() # store rs
@@ -62,7 +62,7 @@ def read_rs_history(histFile):
     logging.info("Reading '{}' file...".format(histFile))
     for ln in myopen(histFile):
         fd = ln.strip().split('\t')
-        if ln.find('re-activ') < 0:
+        if ln.lower().find('re-activ') < 0:
             RS_HISTORY.add(fd[0])
 
     return RS_HISTORY
@@ -111,7 +111,7 @@ def fetch_snps(snp_ids, verbose=False):
     response = Entrez.efetch(db='SNP', id=','.join(snp_ids), rettype='flt', retmode='flt').read()
     logging.info('Done')
     if verbose:
-        print response
+        print(response)
 
     snp_infos = []
     for snp_info in filter(None, response.split('\n\n')):
@@ -122,7 +122,7 @@ def lift_rs(rsvec, RS_HISTORY, RS_MERGE):
     RS_LIFTED = rsvec.copy(); nsnps = len(rsvec)
     RS_idx = np.empty((nsnps,), dtype='|S10')
     logging.info("Lifting rs# numbers for n={} SNPs...".format(nsnps))
-    for i in xrange(nsnps):
+    for i in range(nsnps):
         rs = rsvec[i]
         if (i+1) % 200000 == 0:
             logging.info("{} SNPs done".format(i+1))
@@ -152,7 +152,7 @@ def lift_pos(posvec, chrvec, chainFile):
     pos_indi = np.empty((nsnps,), dtype='|S10')
     dup_indi = np.empty((nsnps,), dtype='bool'); dup_indi.fill(False)
     lift = LiftOver(chainFile)
-    for i in xrange(nsnps):
+    for i in range(nsnps):
         if (i+1) % 200000 == 0:
             logging.info("{} SNPs done".format(i+1))
         pos = posvec[i]; chr = 'chr%d' % (chrvec[i],)
@@ -178,7 +178,7 @@ def trim_ch_rs (sum_dat, snpCol, chrCol, with_pos):
     chrnum_vec = np.empty((nsnps, ), dtype='int')
     rsvec_num = []; rsPattern = re.compile(r'rs[0-9]*')
     rsidx = np.empty((nsnps, ), dtype='bool'); rsidx.fill(False)
-    for i in xrange(nsnps):
+    for i in range(nsnps):
         if (i+1) % 200000 == 0:
             logging.info("{} SNPs done".format(i+1))
         rs = sum_dat.loc[:,snpCol][i]
@@ -193,30 +193,28 @@ def trim_ch_rs (sum_dat, snpCol, chrCol, with_pos):
     return rsvec_num, rsidx, chrnum_vec
 
 def try_find_build(rs, pos):
-
     snps_info = fetch_snps(rs)
     #snps_info = [('rs3737728', 'GRCh38.p2', '1', '1086035'), ('rs3934834', 'GRCh38.p2', '1', '1070426'), ('rs9651273', 'GRCh38.p2', '1', '1096160')]
-
     logging.info("Loading liftover chain files...")
-    lift38_19 = LiftOver('dataset/hg38ToHg19.over.chain.gz')
-    lift19_18 = LiftOver('dataset/hg19ToHg18.over.chain.gz')
-    lift19_17 = LiftOver('dataset/hg19ToHg17.over.chain.gz')
+    lift38_19 = LiftOver('pyliftover/hg38ToHg19.over.chain.gz')
+    lift19_18 = LiftOver('pyliftover/hg19ToHg18.over.chain.gz')
+    lift19_17 = LiftOver('pyliftover/hg19ToHg17.over.chain.gz')
     logging.info("Done")
 
     for (rsId, build, true_chr, pos_hg38), source_pos in zip(snps_info, pos):
         try:
-            if build != 'GRCh38.p2':  # assume a specific build we get from Entrez.efetch(db='SNP')
-                continue
+            #if build != 'GRCh38.p2':  # assume a specific build we get from Entrez.efetch(db='SNP')
+            #    continue
             source_pos -= 1
             pos_hg19 = lift38_19.convert_coordinate('chr{}'.format(true_chr), int(pos_hg38) - 1)[0][1]
             pos_hg18 = lift19_18.convert_coordinate('chr{}'.format(true_chr), pos_hg19)[0][1]
             pos_hg17 = lift19_17.convert_coordinate('chr{}'.format(true_chr), pos_hg19)[0][1]
-            print "build={} {} chr{} source={} hg38={}{} hg19={}{} hg18={}{} hg17={}{}".format(
+            print("build={} {} chr{} source={} hg38={}{} hg19={}{} hg18={}{} hg17={}{}".format(
                 build, rsId, true_chr, source_pos,
                 pos_hg38, '*' if pos_hg38==source_pos else '',
                 pos_hg19, '*' if pos_hg19==source_pos else '',
                 pos_hg18, '*' if pos_hg18==source_pos else '',
-                pos_hg17, '*' if pos_hg17==source_pos else '')
+                pos_hg17, '*' if pos_hg17==source_pos else ''))
         except:
             pass
 
@@ -244,7 +242,7 @@ def lift_over(sumFile, outDir, histFile, mergFile, chainFile,
 
     if find_build:
         sample_size = 60
-        sample = random.sample(xrange(sum_dat.shape[0]), sample_size)
+        sample = random.sample(range(sum_dat.shape[0]), sample_size)
         sum_dat_sample = sum_dat.ix[sample, :]
         sum_dat_sample = sum_dat_sample.sort_values(chrCol)
         sum_dat_sample.reset_index(inplace=True)
@@ -260,8 +258,8 @@ def lift_over(sumFile, outDir, histFile, mergFile, chainFile,
 
     rsvec_num, rsidx, chrnum_vec = trim_ch_rs(sum_dat, snpCol, chrCol, with_pos)
 
-    RS_HISTORY = read_rs_history(histFile) if isinstance(histFile, basestring) else histFile
-    RS_MERGE = read_rs_merge(mergFile) if isinstance(mergFile, basestring) else mergFile
+    RS_HISTORY = read_rs_history(histFile) if isinstance(histFile, str) else histFile
+    RS_MERGE = read_rs_merge(mergFile) if isinstance(mergFile, str) else mergFile
 
     lifted_rs, lift_rs_indi = lift_rs(rsvec_num, RS_HISTORY, RS_MERGE)
     summary_lift_rs(sum_dat.loc[:, snpCol][rsidx], lifted_rs, lift_rs_indi, 
@@ -395,7 +393,7 @@ def summary_lift_rs(orig_rs, new_rs, indivec, outDir):
     logging.info("Saving lifted SNPs to '{}'...".format(summary_file))
     with open(results_file, 'w') as f:
         f.write('ORI_RS\tNEW_RS\tSTATUS\n')
-        for i in xrange(len(orig_rs)):
+        for i in range(len(orig_rs)):
             f.write('%s\trs%s\t%s\n' % (orig_rs[i], new_rs[i], indivec[i]))
 
 def summary_lift_pos(orig_snp, chrvec, posvec, new_posvec, indivec, outDir):
@@ -413,7 +411,7 @@ def summary_lift_pos(orig_snp, chrvec, posvec, new_posvec, indivec, outDir):
         f.write('\t Total number of SNPs with multiple locations in new build: %d\n' % ( np.sum(multi_idx,)))
     with open (os.path.join(outDir, 'lift_pos_result.txt'), 'w') as f:
         f.write('SNP\tCHR\t\ORI_POS\tNEW_POS\tSTATUS\n')
-        for i in xrange(len(orig_snp)):
+        for i in range(len(orig_snp)):
             f.write('%s\t%s\t%d\t%d\%s\n' % (orig_snp[i], str(chrvec[i]), 
                 posvec[i], new_posvec[i], indivec[i]))
 
@@ -433,9 +431,9 @@ if __name__ == "__main__":
     parser.add_argument('-p', '--pos', type=str, help='The name of the BP field in input file', default='-', dest='pos_column')
 
     parser.add_argument(      '--output-folder', type=str, default='.', help='Output directory')
-    parser.add_argument(      '--history-file', type=str, default='dataset/SNPHistory.bcp.gz',help='NCBI SNP build history file')
-    parser.add_argument(      '--merge-file', type=str, default='dataset/RsMergeArch.bcp.gz', help='NCBI SNP merge file')
-    parser.add_argument(      '--chain-file', type=str, default='dataset/hg18ToHg19.over.chain.gz', help='UCSC chain file')
+    parser.add_argument(      '--history-file', type=str, default='pyliftover/SNPHistory.bcp.gz',help='NCBI SNP build history file')
+    parser.add_argument(      '--merge-file', type=str, default='pyliftover/RsMergeArch.bcp.gz', help='NCBI SNP merge file')
+    parser.add_argument(      '--chain-file', type=str, default='pyliftover/hg18ToHg19.over.chain.gz', help='UCSC chain file')
     parser.add_argument(      '--find-build', action='store_true', help='Attempt to detect the build of the input file', default=False)
 
     parser.add_argument(       '--bim', action='store_true', help='(experimental option) update PLINT fileset bim file', default=False)
