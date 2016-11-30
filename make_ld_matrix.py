@@ -6,6 +6,7 @@
 from subprocess import call, check_output
 import subprocess
 import pandas as pd
+import numpy as np
 import argparse
 import sys
 
@@ -27,7 +28,6 @@ def parse_args(args):
     parser.add_argument("--saveltm", default=None, type=str, help="Generate 'ltm' --- lower triangular matrix in plain text format.")
     return parser.parse_args(args)
 
-
 def make_ld_matrix(args):
     if not args.savemat and not args.saveltm:
         raise ValueError('No output requested, use --savemat or --saveltm')
@@ -35,21 +35,23 @@ def make_ld_matrix(args):
     # Read the template
     ref = pd.read_csv(args.ref, delim_whitespace=True)
     nsnp = ref.shape[0]
-    rs_to_id = dict(zip(ref['SNP'], ref.index))
-    if len(rs_to_id) != nsnp: raise ValueError("Duplicated SNPs found in the reference file")
+    chrpos_to_id = dict([((chr, pos), index) for chr, pos, index in zip(ref['CHR'], ref['BP'], ref.index)])
+    if len(chrpos_to_id) != nsnp: raise ValueError("Duplicated CHR:POS pairs found in the reference file")
 
-    # Filter according to the template, then create LD file in table format
-    execute_command('{0} --bfile {1} --make-bed --out tmp --extract {2}'.format(args.plink, args.bfile, args.ref))
-    execute_command('{0} --bfile tmp --r2 --ld-window-kb {1} --ld-window 999999 --ld-window-r2 {2} --out tmp'.format(args.plink, args.ld_window_kb, args.ld_window_r2))
+    # Create LD file in table format
+    execute_command('{0} --bfile {1} --r2 --ld-window-kb {2} --ld-window 999999 --ld-window-r2 {3} --out tmp'.format(args.plink, args.bfile, args.ld_window_kb, args.ld_window_r2))
 
     # Read resulting LD matrix
     reader = pd.read_csv('tmp.ld', delim_whitespace=True, chunksize=args.chunksize)
 
     id1 = []; id2 = []; val = []
     for i, df in enumerate(reader):
-        id1.extend(list(df['SNP_A'].map(lambda x: rs_to_id[x])))
-        id2.extend(list(df['SNP_B'].map(lambda x: rs_to_id[x])))
-        val.extend(list(df['R2']))
+        id1tmp = [chrpos_to_id.get((chr, pos), None) for chr, pos in zip(df['CHR_A'], df['BP_A'])]
+        id2tmp = [chrpos_to_id.get((chr, pos), None) for chr, pos in zip(df['CHR_B'], df['BP_B'])]
+        mask = [(i1 is not None and i2 is not None) for i1, i2 in zip(id1tmp, id2tmp)]
+        id1.extend([value for index, value in enumerate(id1tmp) if mask[index] == True])
+        id2.extend([value for index, value in enumerate(id2tmp) if mask[index] == True])
+        val.extend([value for index, value in enumerate(df['R2']) if mask[index] == True])
 
     # Output the result as lower diagonal matrix
     if args.saveltm:
