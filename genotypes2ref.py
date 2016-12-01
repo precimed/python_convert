@@ -25,6 +25,7 @@ def parse_args(args):
     return parser.parse_args(args)
 
 def execute_command(command):
+    print("Execute command: {}".format(command))
     print(subprocess.Popen(command.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate()[0].decode("utf-8"))
     #print(subprocess.check_output(command.split()).decode("utf-8"))
 
