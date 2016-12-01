@@ -45,8 +45,8 @@ def make_ld_matrix(args):
 
     if args.ldfile is None:
         # Create LD file in table format
-        execute_command('{0} --bfile {1} --r2 --ld-window-kb {2} --ld-window 999999 --ld-window-r2 {3} --out tmp'.format(args.plink, args.bfile, args.ld_window_kb, args.ld_window_r2))
-        args.ldfile = 'tmp.ld'
+        execute_command('{0} --bfile {1} --r2 gz --ld-window-kb {2} --ld-window 999999 --ld-window-r2 {3} --out tmp'.format(args.plink, args.bfile, args.ld_window_kb, args.ld_window_r2))
+        args.ldfile = 'tmp.ld.gz'
 
     # Read resulting LD matrix
     reader = pd.read_csv(args.ldfile, delim_whitespace=True, chunksize=args.chunksize)
