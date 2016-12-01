@@ -88,13 +88,13 @@ def make_ld_matrix(args):
         print('Save result in matlab format to {0}...'.format(args.savemat))
         import scipy.io as sio
         sio.savemat(
-            args.savemat, {'id1':id1, 'id2':id2, 'nsnp':nsnp},
+            args.savemat, {'id1':[i + 1 for i in id1], 'id2':[i + 1 for i in id2], 'nsnp':nsnp},
             format='5', do_compression=False, oned_as='column')
 
         print("""
 The results are saved into {0}. Now you should open matlab and execute the following commands to re-save the result as matlab sparse matrix:
     load {0}
-    LDmat = sparse(double(1+id1),double(1+id2),true,double(nsnp),double(nsnp));
+    LDmat = sparse(double(id1),double(id2),true,double(nsnp),double(nsnp));
     LDmat = LDmat | speye(double(nsnp));
     LDmat = LDmat | (LDmat - LDmat');
     save('LDmat.mat', 'LDmat', '-v7.3')
