@@ -52,27 +52,29 @@ def make_ld_matrix(args):
     reader = pd.read_csv(args.ldfile, delim_whitespace=True, chunksize=args.chunksize)
 
     print('Parsing {0}...'.format(args.ldfile))
-    id1 = []; id2 = []; val = []
+    total_df = None
     for i, df in enumerate(reader):
         id1tmp = [chrpos_to_id.get((chr, pos), None) for chr, pos in zip(df['CHR_A'], df['BP_A'])]
         id2tmp = [chrpos_to_id.get((chr, pos), None) for chr, pos in zip(df['CHR_B'], df['BP_B'])]
         mask = [(i1 is not None and i2 is not None) for i1, i2 in zip(id1tmp, id2tmp)]
-        id1.extend([value for index, value in enumerate(id1tmp) if mask[index] == True])
-        id2.extend([value for index, value in enumerate(id2tmp) if mask[index] == True])
-        val.extend([value for index, value in enumerate(df['R2']) if mask[index] == True])
-        print('\rFinish {0} entries ({1} after joining with ref)'.format(i * args.chunksize + len(mask), len(id1)), end='')
+        id1 = [value for index, value in enumerate(id1tmp) if mask[index] == True]
+        id2 = [value for index, value in enumerate(id2tmp) if mask[index] == True]
+        val = [value for index, value in enumerate(df['R2']) if mask[index] == True]
+        df_tmp = pd.DataFrame(data={'id1': id1, 'id2': id2, 'val': val})
+        total_df = df_tmp if total_df is None else total_df.append(df_tmp, ignore_index=True)
+        print('\rFinish {0} entries ({1} after joining with ref)'.format(i * args.chunksize + len(mask), total_df.shape[0]), end='')
     print('. Done.')
 
     print('Detecting duplicated entries...')
-    df = pd.DataFrame(data={'id1': id1, 'id2': id2, 'val': val})
-    df.drop_duplicates(subset=['id1', 'id2'], keep='first', inplace=True)
-    print('Drop {} duplicated entries'.format(len(id1)-df.shape[0]))
-    id1=list(df['id1']); id2 = list(df['id2']); val = list(df['val'])
+    old_size = total_df.shape[0]
+    total_df.drop_duplicates(subset=['id1', 'id2'], keep='first', inplace=True)
+    print('Drop {} duplicated entries'.format(old_size-total_df.shape[0]))
 
     # Output the result as lower diagonal matrix
     if args.saveltm:
         print('Save result as lower diagonal matrix to {0}...'.format(args.saveltm))
         from scipy.sparse import csr_matrix
+        id1=list(total_df['id1']); id2 = list(total_df['id2']); val = list(total_df['val'])
         assert(all([(i < j) for (i, j) in zip(id1, id2)]))  # expect that plink output lower diagonal matrix
         csr = csr_matrix((val, (id2, id1)), shape=(nsnp, nsnp))
 
@@ -88,7 +90,7 @@ def make_ld_matrix(args):
         print('Save result in matlab format to {0}...'.format(args.savemat))
         import scipy.io as sio
         sio.savemat(
-            args.savemat, {'id1':[i + 1 for i in id1], 'id2':[i + 1 for i in id2], 'nsnp':nsnp},
+            args.savemat, {'id1':[i + 1 for i in total_df['id1']], 'id2':[i + 1 for i in total_df['id2']], 'nsnp':nsnp},
             format='5', do_compression=False, oned_as='column')
 
         print("""
