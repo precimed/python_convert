@@ -6,7 +6,7 @@
 # To run this tool:
 # - Download *.vcf.gz files from 1000 Genome project ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/
 # - Run the tool as follows 
-#    python genotypes2ref.py --dir 1000Genome/phase3/build37_released --ref 2558411_ref.bim
+#    python genotypes2ref.py --vcf ~/1000Genome/phase3/build37_released/*.vcf.gz --ref 2558411_ref.bim
 
 import argparse
 import glob
@@ -20,7 +20,7 @@ import pandas as pd
 def parse_args(args):
     parser = argparse.ArgumentParser(description="Generate LD matrix from genotype matrix")
     parser.add_argument("--ref", type=str, help="Reference file (for example 2558411_ref.bim or 9279485_ref.bim.")
-    parser.add_argument("--dir", type=str, help="Folder with input *.vcf.gz files")
+    parser.add_argument("--vcf", type=str, help="Filename of input .vcf file, or pattern (for example '~/1000Genome/phase3/build37_released/*.vcf.gz')")
     parser.add_argument("--keep", default=r"data/EUR_subj.list", type=str, help="Extract SNPs and keep only EUR individuals")
     parser.add_argument("--out", default=r"tmp", type=str, help="Folder to output the result")
     return parser.parse_args(args)
@@ -34,7 +34,7 @@ def process_vcf_file(vcf_file, df_ref, keep_file, output_dir):
     [_, filename] = os.path.split(vcf_file)
     bfile = os.path.join(output_dir, filename)
     snpidlist = os.path.join(output_dir, filename + '.snpidlist.txt')
-    join_file = os.path.join(output_dir, filename + '.joined')
+    join_file = os.path.join(output_dir, filename)
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -53,44 +53,17 @@ def process_vcf_file(vcf_file, df_ref, keep_file, output_dir):
     # Extract SNPs and keep only EUR individuals
     execute_command(r'plink --memory 4096 --bfile {0} --extract {1} --keep {2} --make-bed --out {3}'.format(bfile, snpidlist, keep_file, join_file))
 
-def exclude_snps(bfile_in, snps_file, bfile_out):
-    execute_command('plink --memory 4096 --bfile {0} --exclude {1} --make-bed --out {2}'.format(bfile_in, snps_file, bfile_out))
-    
-def merge(files, output_bfile):
-    missnp_file = '{0}-merge.missnp'.format(output_bfile)
-    if os.path.exists(missnp_file):
-        os.remove(missnp_file)
-    first = files[0]
-    with open('mergelist.txt', 'w') as mergelist:
-        for filename in files[1:]:
-            mergelist.write('{0}.bed {0}.bim {0}.fam\n'.format(filename))
-    execute_command('plink --memory 4096 --bfile {0} --merge-list mergelist.txt --allow-no-sex --make-bed --out {1}'.format(first, output_bfile))
-    os.remove('mergelist.txt')
-
 if __name__ == "__main__":
     args = parse_args(sys.argv[1:])
 
-    vcf_files=[file for file in glob.glob(os.path.join(args.dir, '*.vcf.gz'))
+    vcf_files=[file for file in glob.glob(args.vcf)
                if ('chrX' not in file) and ('chrY' not in file)]
-    assert len(vcf_files) == 22
-        
+    print(vcf_files)
     # Read reference file
     df_ref = pd.read_csv(args.ref, delim_whitespace=True)
     assert df_ref.duplicated(['CHR', 'BP']).sum() == 0
     assert df_ref.duplicated(['SNP']).sum() == 0
 
-    for vcf_file in vcf_files: process_vcf_file(vcf_file, df_ref, args.keep, args.out)
-
-    # Find all .bed filenames (without extention)
-    files = [os.path.splitext(file)[0] for file in glob.glob(os.path.join(args.out, '*.joined.bed'))]
-
-    output_bfile = os.path.join(args.out, 'merged')
-    merge(files, output_bfile)
-    missnp_file = '{0}-merge.missnp'.format(output_bfile)
-    if os.path.exists(missnp_file):
-        # Handle merge failure as described here: https://www.cog-genomics.org/plink2/data#merge3
-        for file in files:
-            exclude_snps(file, missnp_file, '{0}.filter'.format(file))
-        merge(['{0}.filter'.format(file) for file in files], output_bfile)
+    for vcf_file in reversed(vcf_files): process_vcf_file(vcf_file, df_ref, args.keep, args.out)
 
     print("Done.")
