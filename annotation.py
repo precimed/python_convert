@@ -10,7 +10,7 @@ import scipy.io as sio
 annotation_categories = ["transcript", "exon", "intron", "utr5", "utr3",
     "coding", "upstream_1kb", "downstream_1kb"]
 
-valid_chromosomes = map(str, range(1,23))
+valid_chromosomes = [str(i) for i in range(1,23)]
 
 required_biomart_cols = {"Associated Gene Name":    "gene_name",
                          "Ensembl Gene ID":         "gene_id",
@@ -40,45 +40,45 @@ snp_annotation = namedtuple("snp_annotation", annotation_categories)
 
 def is_in_upstream_1kb(snp, pos_chr_mart_df):
     forward_upstream = ( (pos_chr_mart_df.strand == 1) &
-            (snp.pos < pos_chr_mart_df.transcript_start) ).any()
+            (int(snp.pos) < pos_chr_mart_df.transcript_start) ).any()
     if not forward_upstream:
         reverse_upstream = ( (pos_chr_mart_df.strand == -1) &
-                (snp.pos >= pos_chr_mart_df.transcript_end) ).any()
+                (int(snp.pos) >= pos_chr_mart_df.transcript_end) ).any()
     return forward_upstream or reverse_upstream
 
 
 def is_in_downstream_1kb(snp, pos_chr_mart_df):
     forward_downstream = ( (pos_chr_mart_df.strand == 1) &
-            (snp.pos >= pos_chr_mart_df.transcript_end) ).any()
+            (int(snp.pos) >= pos_chr_mart_df.transcript_end) ).any()
     if not forward_downstream:
         reverse_downstream = ( (pos_chr_mart_df.strand == -1) &
-                (snp.pos < pos_chr_mart_df.transcript_start) ).any()
+                (int(snp.pos) < pos_chr_mart_df.transcript_start) ).any()
     return forward_downstream or reverse_downstream
 
 
 def is_in_transcript(snp, pos_chr_mart_df):
     return ( (pos_chr_mart_df.transcript_start <= snp.pos) &
-            (snp.pos < pos_chr_mart_df.transcript_end) ).any()
+            (int(snp.pos) < pos_chr_mart_df.transcript_end) ).any()
 
 
 def is_in_exon(snp, pos_chr_mart_df):
     return ( (pos_chr_mart_df.exon_start <= snp.pos) &
-            (snp.pos < pos_chr_mart_df.exon_end) ).any()
+            (int(snp.pos) < pos_chr_mart_df.exon_end) ).any()
 
 
 def is_in_utr5(snp, coding_pos_chr_mart_df):
     return ( (coding_pos_chr_mart_df.utr5_start <= snp.pos) &
-            (snp.pos < coding_pos_chr_mart_df.utr5_end) ).any()
+            (int(snp.pos) < coding_pos_chr_mart_df.utr5_end) ).any()
 
 
 def is_in_utr3(snp, coding_pos_chr_mart_df):
     return ( (coding_pos_chr_mart_df.utr3_start <= snp.pos) &
-            (snp.pos < coding_pos_chr_mart_df.utr3_end) ).any()
+            (int(snp.pos) < coding_pos_chr_mart_df.utr3_end) ).any()
 
 
 def is_in_coding(snp, coding_pos_chr_mart_df):
     return ( (coding_pos_chr_mart_df.coding_start <= snp.pos) &
-            (snp.pos < coding_pos_chr_mart_df.coding_end) ).any()
+            (int(snp.pos) < coding_pos_chr_mart_df.coding_end) ).any()
 
 
 def annotate(arg):
@@ -87,7 +87,7 @@ def annotate(arg):
     for snp_row in chr_snp_df.itertuples():
         annot = dict.fromkeys(annotation_categories, False)
         i = ( (chr_mart_df.upstream_1kb <= snp_row.pos) &
-              (snp_row.pos < chr_mart_df.downstream_1kb) )
+              (int(snp_row.pos) < chr_mart_df.downstream_1kb) )
         pos_chr_mart_df = chr_mart_df[i]
         if len(pos_chr_mart_df) != 0:
             annot["upstream_1kb"] = is_in_upstream_1kb(snp_row, pos_chr_mart_df)
@@ -140,8 +140,11 @@ def make_annotation_from_biomart(biomart_file, bim_file, out_txt, out_mat,
 
     arg_gen = ( (snp_df[snp_df.chr == c], mart_df[mart_df.chr == c])
             for c in valid_chromosomes )
-    pool = Pool(processes=n_proc)
-    annotation_dfs = pool.map(annotate, arg_gen)
+    if n_proc > 1:
+        pool = Pool(processes=n_proc)
+        annotation_dfs = pool.map(annotate, arg_gen)
+    else:
+        annotation_dfs = [annotate(arg) for arg in arg_gen]
     annot_df = pd.concat(annotation_dfs)
     print("%d SNPs were annotated" % len(annot_df))
     annot_df[annotation_categories] = annot_df[annotation_categories].astype(int)
@@ -150,7 +153,7 @@ def make_annotation_from_biomart(biomart_file, bim_file, out_txt, out_mat,
         annot_df.to_csv(out_txt, sep='\t', index_label="snp")
         print("%s saved" % out_txt)
     if not out_mat is None:
-        mat_dict = {"annotations": annot_df.values}
+        mat_dict = {"annomat": annot_df.values, "annonames": list(annot_df.columns)}
         sio.savemat(out_mat, mat_dict, format="5", appendmat=False)
         print("%s saved" % out_mat)
 
@@ -170,7 +173,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Classify SNPs from reference "
         "template based on the biomart annotations.")
-    parser.add_argument("--biomart", default="biomart_GENCODE_basic.txt.gz",
+    parser.add_argument("--biomart", default="data/biomart_GENCODE_basic.txt.gz",
         type=str, help="File with Biomart annotations.")
     parser.add_argument("--ref", default="2558411_ref.bim",
         type=str, help="Reference template file.")
