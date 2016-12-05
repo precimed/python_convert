@@ -90,7 +90,7 @@ def make_ld_matrix(args):
         print('Save result in matlab format to {0}...'.format(args.savemat))
         import scipy.io as sio
         sio.savemat(
-            args.savemat, {'id1':[i + 1 for i in total_df['id1']], 'id2':[i + 1 for i in total_df['id2']], 'nsnp':nsnp},
+            args.savemat, {'id1':[i + 1 for i in total_df['id1']], 'id2':[i + 1 for i in total_df['id2']], 'val':list(total_df['val']), 'nsnp':nsnp},
             format='5', do_compression=False, oned_as='column')
 
         print("""
