@@ -82,9 +82,9 @@ if __name__ == "__main__":
     for vcf_file in vcf_files: process_vcf_file(vcf_file, df_ref, args.keep, args.out)
 
     # Find all .bed filenames (without extention)
-    files = [os.path.splitext(file)[0] for file in glob.glob(os.path.join(output_dir, '*.joined.bed'))]
+    files = [os.path.splitext(file)[0] for file in glob.glob(os.path.join(args.out, '*.joined.bed'))]
 
-    output_bfile = os.path.join(output_dir, 'merged')
+    output_bfile = os.path.join(args.out, 'merged')
     merge(files, output_bfile)
     missnp_file = '{0}-merge.missnp'.format(output_bfile)
     if os.path.exists(missnp_file):
