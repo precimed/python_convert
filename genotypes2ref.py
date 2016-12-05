@@ -23,6 +23,7 @@ def parse_args(args):
     parser.add_argument("--vcf", type=str, help="Filename of input .vcf file, or pattern (for example '~/1000Genome/phase3/build37_released/*.vcf.gz')")
     parser.add_argument("--keep", default=r"data/EUR_subj.list", type=str, help="Extract SNPs and keep only EUR individuals")
     parser.add_argument("--out", default=r"tmp", type=str, help="Folder to output the result")
+    parser.add_argument("--plink", default="plink", type=str, help="location of plink executable")
     return parser.parse_args(args)
 
 def execute_command(command):
@@ -30,7 +31,7 @@ def execute_command(command):
     print(subprocess.Popen(command.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate()[0].decode("utf-8"))
     #print(subprocess.check_output(command.split()).decode("utf-8"))
 
-def process_vcf_file(vcf_file, df_ref, keep_file, output_dir):
+def process_vcf_file(vcf_file, df_ref, keep_file, output_dir, plink):
     [_, filename] = os.path.split(vcf_file)
     bfile = os.path.join(output_dir, filename)
     snpidlist = os.path.join(output_dir, filename + '.snpidlist.txt')
@@ -40,7 +41,7 @@ def process_vcf_file(vcf_file, df_ref, keep_file, output_dir):
         os.makedirs(output_dir)
 
     # Convert vcf into bed
-    execute_command(r'plink --memory 4096 --vcf {0} --make-bed --out {1}'.format(vcf_file, bfile))
+    execute_command(r'{0} --vcf {1} --make-bed --out {2}'.format(plink, vcf_file, bfile))
 
     # Read bim file
     df_bim = pd.read_csv('{}.bim'.format(bfile), header=None, delim_whitespace=True)
@@ -51,7 +52,7 @@ def process_vcf_file(vcf_file, df_ref, keep_file, output_dir):
     df_bim2[df_bim2['SNP_y'].notnull()]['SNP_x'].to_csv(snpidlist, index=False)
 
     # Extract SNPs and keep only EUR individuals
-    execute_command(r'plink --memory 4096 --bfile {0} --extract {1} --keep {2} --make-bed --out {3}'.format(bfile, snpidlist, keep_file, join_file))
+    execute_command(r'{0} --bfile {1} --extract {2} --keep {3} --make-bed --out {4}'.format(plink, bfile, snpidlist, keep_file, join_file))
     return join_file
 
 if __name__ == "__main__":
@@ -65,6 +66,6 @@ if __name__ == "__main__":
     assert df_ref.duplicated(['CHR', 'BP']).sum() == 0
     assert df_ref.duplicated(['SNP']).sum() == 0
 
-    for vcf_file in vcf_files: process_vcf_file(vcf_file, df_ref, args.keep, args.out)
+    for vcf_file in vcf_files: process_vcf_file(vcf_file, df_ref, args.keep, args.out, args.plink)
 
     print("Done.")

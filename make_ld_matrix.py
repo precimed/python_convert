@@ -48,7 +48,7 @@ def make_ld_matrix(args):
     if len(chrpos_to_id) != nsnp: raise ValueError("Duplicated CHR:POS pairs found in the reference file")
 
     if args.vcf is not None:
-       args.bfile = process_vcf_file(args.vcf, ref, args.keep, 'tmp')
+       args.bfile = process_vcf_file(args.vcf, ref, args.keep, 'tmp', args.plink)
     
     execute_command('{0} --bfile {1} --freq --out {1}'.format(args.plink, args.bfile))
     mafvec = make_maf_vector(chrpos_to_id, nsnp, args.bfile);
