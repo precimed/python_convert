@@ -22,6 +22,7 @@ def parse_args(args):
     parser.add_argument("--ref", type=str, help="Reference file (for example 2558411_ref.bim or 9279485_ref.bim.")
     parser.add_argument("--dir", type=str, help="Folder with input *.vcf.gz files")
     parser.add_argument("--keep", default=r"data/EUR_subj.list", type=str, help="Extract SNPs and keep only EUR individuals")
+    parser.add_argument("--out", default=r"tmp", type=str, help="Folder to output the result")
     return parser.parse_args(args)
 
 def execute_command(command):
@@ -29,12 +30,11 @@ def execute_command(command):
     print(subprocess.Popen(command.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate()[0].decode("utf-8"))
     #print(subprocess.check_output(command.split()).decode("utf-8"))
 
-def process_vcf_file(vcf_file, df_ref, keep_file):
+def process_vcf_file(vcf_file, df_ref, keep_file, output_dir):
     [_, filename] = os.path.split(vcf_file)
-    output_dir = os.path.join(working_path, 'tmp')
-    bfile = os.path.join(working_path, 'tmp', filename)
-    snpidlist = os.path.join(working_path, 'tmp', filename + '.snpidlist.txt')
-    join_file = os.path.join(working_path, 'tmp', filename + '.joined')
+    bfile = os.path.join(output_dir, filename)
+    snpidlist = os.path.join(output_dir, filename + '.snpidlist.txt')
+    join_file = os.path.join(output_dir, filename + '.joined')
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -64,13 +64,13 @@ def merge(files, output_bfile):
     with open('mergelist.txt', 'w') as mergelist:
         for filename in files[1:]:
             mergelist.write('{0}.bed {0}.bim {0}.fam\n'.format(filename))
-    execute_command('plink --memory 4096 --bfile {0} --merge-list mergelist.txt --allow-no-sex --freq --make-bed --out {1}'.format(first, output_bfile))
+    execute_command('plink --memory 4096 --bfile {0} --merge-list mergelist.txt --allow-no-sex --make-bed --out {1}'.format(first, output_bfile))
     os.remove('mergelist.txt')
 
 if __name__ == "__main__":
     args = parse_args(sys.argv[1:])
 
-    vcf_files=[file for file in glob.glob(os.path.join(working_path, '*.vcf.gz'))
+    vcf_files=[file for file in glob.glob(os.path.join(args.dir, '*.vcf.gz'))
                if ('chrX' not in file) and ('chrY' not in file)]
     assert len(vcf_files) == 22
         
@@ -79,12 +79,12 @@ if __name__ == "__main__":
     assert df_ref.duplicated(['CHR', 'BP']).sum() == 0
     assert df_ref.duplicated(['SNP']).sum() == 0
 
-    for vcf_file in vcf_files: process_vcf_file(vcf_file, df_ref, args.keep)
+    for vcf_file in vcf_files: process_vcf_file(vcf_file, df_ref, args.keep, args.out)
 
     # Find all .bed filenames (without extention)
-    files = [os.path.splitext(file)[0] for file in glob.glob(os.path.join(args.dir, 'tmp', '*.joined.bed'))]
+    files = [os.path.splitext(file)[0] for file in glob.glob(os.path.join(output_dir, '*.joined.bed'))]
 
-    output_bfile = os.path.join(args.dir, 'tmp', 'merged')
+    output_bfile = os.path.join(output_dir, 'merged')
     merge(files, output_bfile)
     missnp_file = '{0}-merge.missnp'.format(output_bfile)
     if os.path.exists(missnp_file):
