@@ -52,6 +52,7 @@ def process_vcf_file(vcf_file, df_ref, keep_file, output_dir):
 
     # Extract SNPs and keep only EUR individuals
     execute_command(r'plink --memory 4096 --bfile {0} --extract {1} --keep {2} --make-bed --out {3}'.format(bfile, snpidlist, keep_file, join_file))
+    return join_file
 
 if __name__ == "__main__":
     args = parse_args(sys.argv[1:])
@@ -64,6 +65,6 @@ if __name__ == "__main__":
     assert df_ref.duplicated(['CHR', 'BP']).sum() == 0
     assert df_ref.duplicated(['SNP']).sum() == 0
 
-    for vcf_file in reversed(vcf_files): process_vcf_file(vcf_file, df_ref, args.keep, args.out)
+    for vcf_file in vcf_files: process_vcf_file(vcf_file, df_ref, args.keep, args.out)
 
     print("Done.")

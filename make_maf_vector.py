@@ -17,13 +17,8 @@ def parse_args(args):
     parser.add_argument("--savemat", default=None, type=str, help="Generate matfile for Matlab.")
     return parser.parse_args(args)
 
-def make_maf_vector(ref, bfile, savemat):
-    print('Reading {0}...'.format(ref))
-    ref = pd.read_csv(ref, delim_whitespace=True)
-    nsnp = ref.shape[0]
-    chrpos_to_id = dict([((chr, pos), index) for chr, pos, index in zip(ref['CHR'], ref['BP'], ref.index)])
-    if len(chrpos_to_id) != nsnp: raise ValueError("Duplicated CHR:POS pairs found in the reference file")
 
+def make_maf_vector(chrpos_to_id, nsnp, bfile):
     print('Reading {0}...'.format(bfile + '.bim'))
     df_bim = pd.read_csv(bfile + '.bim', delim_whitespace=True, header=None)
     df_bim.columns=['CHR','SNP','GP','POS','A1','A2']
@@ -36,15 +31,23 @@ def make_maf_vector(ref, bfile, savemat):
     df = df_frq[df_frq['INDEX'] != -1]
     for index, value in zip(df['INDEX'], df['MAF']):
         mafvec[index] = value
-
-    print('Found {0} SNPs with non-zero MAF, {1} with zero MAF, {2} missing in genotypes --- {3} SNPs in total'.format(
-          (~np.isnan(mafvec) & (mafvec>0)).sum(), (mafvec == 0).sum(), np.isnan(mafvec).sum(), len(mafvec)))
-
-    print('Saving result to {0}...'.format(savemat))
-    sio.savemat(savemat, {'mafvec':mafvec}, format='5', do_compression=False, oned_as='column')
-
+    return mafvec
 
 if __name__ == "__main__":
     args = parse_args(sys.argv[1:])
-    make_maf_vector(ref=args.ref, bfile=args.bfile, savemat=args.savemat)
+
+    print('Reading {0}...'.format(args.ref))
+    ref = pd.read_csv(args.ref, delim_whitespace=True)
+    nsnp = ref.shape[0]
+    chrpos_to_id = dict([((chr, pos), index) for chr, pos, index in zip(ref['CHR'], ref['BP'], ref.index)])
+    if len(chrpos_to_id) != nsnp: raise ValueError("Duplicated CHR:POS pairs found in the reference file")
+
+    mafvec = make_maf_vector(chrpos_to_id=chrpos_to_id, nsnp=nsnp, bfile=args.bfile)
+
+    print('Found {0} SNPs with non-zero MAF, {1} with zero MAF, {2} missing in genotypes --- {3} SNPs in total'.format(
+      (~np.isnan(mafvec) & (mafvec>0)).sum(), (mafvec == 0).sum(), np.isnan(mafvec).sum(), len(mafvec)))
+
+    print('Saving result to {0}...'.format(args.savemat))
+    sio.savemat(args.savemat, {'mafvec':mafvec}, format='5', do_compression=False, oned_as='column')
+
     print("Done.")
