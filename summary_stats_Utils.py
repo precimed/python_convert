@@ -60,6 +60,7 @@ default_cnames = {
     'ALLELE_2': 'A2',
     'OTHER_ALLELE': 'A2',
     'NON_EFFECT_ALLELE': 'A2',
+    'NON_EFF_ALLELE': 'A2',
     'DEC_ALLELE': 'A2',
     'NEA': 'A2',
     # N
@@ -88,6 +89,8 @@ default_cnames = {
     'EFFECTS': 'BETA',
     'EFFECT': 'BETA',
     'SIGNED_SUMSTAT': 'SIGNED_SUMSTAT',
+    # STANDARD ERROR
+    'SE' : 'SE',
     # INFO
     'INFO': 'INFO',
     # MAF
@@ -112,6 +115,7 @@ describe_cname = {
     'OR': 'Odds ratio (1 --> no effect; above 1 --> A1 is risk increasing)',
     'BETA': '[linear/logistic] regression coefficient (0 --> no effect; above 0 --> A1 is trait/risk increasing)',
     'LOG_ODDS': 'Log odds ratio (0 --> no effect; above 0 --> A1 is risk increasing)',
+    'SE': 'standard error of the effect size',
     'INFO': 'INFO score (imputation quality; higher --> better imputation)',
     'FRQ': 'Allele frequency',
     'SIGNED_SUMSTAT': 'Directional summary statistic as specified by --signed-sumstats.',
@@ -599,6 +603,47 @@ def parse_flag_cnames(cname_options, signed_sumstats):
             raise
 
     return [flag_cnames, null_value]
+
+def make_metal_script(files, out='meta'):
+    with open('metal_script.txt', 'w') as f:
+        f.write('SCHEME STDERR\n')
+        f.write('SEPARATOR WHITESPACE\n')
+
+        for file in files:
+            cname_translation = find_column_name_translation(sumstats=file)
+            cname_description = {x: describe_cname[cname_translation[x]] for x in cname_translation if cname_translation[x] != 'UNKNOWN'}
+            print('Interpreting column names from {0} as follows:'.format(file))
+            print('\n'.join([x + ':\t' + cname_description[x] for x in cname_description]) + '\n')
+            cname_skip = [x for x in cname_translation if cname_translation[x ] == 'UNKNOWN']
+            if cname_skip: print('Skip the remaining columns ({}).'.format(', '.join(cname_skip)))
+            cname = {v: k for k, v in iteritems(cname_translation)}
+
+            se = cname.get('SE', 'UNKNOWN_COLUMN')
+            pvalue = cname.get('P', 'UNKNOWN_COLUMN')
+            snp = cname.get('SNP', 'UNKNOWN_COLUMN')
+            A1 = cname.get('A1', 'UNKNOWN_COLUMN')
+            A2 = cname.get('A2', 'UNKNOWN_COLUMN')
+            effect = 'UNKNOWN_COLUMN'
+            if 'BETA' in cname: effect = cname['BETA']
+            elif 'LOG_ODDS' in cname: effect = cname['LOG_ODDS']
+            elif 'OR' in cname: effect = 'log({0})'.format(cname['OR'])
+            if effect == 'UNKNOWN_COLUMN': print('WARNING: Effect size column not detected in {0}'.format(file))
+            if snp == 'UNKNOWN_COLUMN': print('WARNING: SNP column not detected in {0}'.format(file))
+            if A1 == 'UNKNOWN_COLUMN' or A2 == 'UNKNOWN_COLUMN': print('WARNING: A1/A2 columns not detected in {0}'.format(file))
+            if se == 'UNKNOWN_COLUMN': print('WARNING: SE column not detected in {0}'.format(file))
+            if pvalue == 'UNKNOWN_COLUMN': print('WARNING: P value column not detected in {0}'.format(file))
+
+            f.write('MARKER {0}\n'.format(snp))
+            f.write('ALLELE {0} {1}\n'.format(A1, A2))
+            f.write('EFFECT {0}\n'.format(effect))
+            f.write('STDERR {0}\n'.format(se))
+            f.write('PVALUE {0}\n'.format(pvalue))
+            f.write('PROCESS {0}\n'.format(file))
+
+        f.write('OUTFILE {0} .tbl\n'.format(out))
+        f.write('ANALYZE\n')
+        f.write('QUIT')
+    print('Done. Now you should run "metal script metal_script.txt"')
 
 def find_column_name_translation(sumstats, snp=None, chromosome=None, pos=None,
                                  a1=None, a2=None, a1_inc=None, p=None,
