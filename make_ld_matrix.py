@@ -72,7 +72,7 @@ def make_ld_matrix(args):
         val = [value for index, value in enumerate(df['R2']) if mask[index] == True]
         df_tmp = pd.DataFrame(data={'id1': id1, 'id2': id2, 'val': val})
         total_df = df_tmp if total_df is None else total_df.append(df_tmp, ignore_index=True)
-        print('\rFinish {0} entries ({1} after joining with ref)'.format(i * args.chunksize + len(mask), total_df.shape[0]), end='')
+        print('\rFinish {0} entries ({1} after joining with ref)'.format(i * args.chunksize + len(mask), total_df.shape[0]))
     print('. Done.')
 
     print('Detecting duplicated entries...')
