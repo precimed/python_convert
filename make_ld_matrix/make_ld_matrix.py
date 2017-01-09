@@ -110,6 +110,12 @@ The results are saved into {0}. Now you should open matlab and execute the follo
     LDmat = LDmat | speye(double(nsnp));
     LDmat = LDmat | (LDmat - LDmat');
     save('LDmat.mat', 'LDmat', '-v7.3')
+    
+Or, to save with the actual r^2 values:
+    load {0}
+    i1 = [id1; id2; (1:nsnp)'];i2 = [id2; id1; (1:nsnp)']; v  = [val; val; ones(nsnp, 1)];
+    LDmat = sparse(double(i1),double(i2),double(v),double(nsnp),double(nsnp));
+    save('LDmat.mat', 'LDmat', '-v7.3')
 """.format(args.savemat))
 
 
