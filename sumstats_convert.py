@@ -6,7 +6,8 @@ import scipy.io as sio
 import os
 import sys
 import argparse
-from summary_stats_Utils import *
+import six
+from sumstats_convert_utils import *
 
 def get_str_list_sign(str_list):
     return np.array([-1 if e[0]=='-' else 1 for e in str_list], dtype=np.int)
@@ -86,6 +87,8 @@ def make_csv(args):
     """
     if os.path.isfile(args.output_file) and not args.force:
         raise ValueError("Output file already exists!")
+    output_dir = os.path.dirname(args.output_file)
+    if not os.path.isdir(output_dir): os.makedirs(output_dir)  # ensure that output folder exists
 
     cname_translation = find_column_name_translation(args.sumstats_file,
         snp=args.id, p=args.pval, a1=args.effectA, a2=args.otherA,
@@ -96,7 +99,7 @@ def make_csv(args):
     print('\n'.join([x + ':\t' + cname_description[x] for x in cname_description]) + '\n')
     cname_skip = [x for x in cname_translation if cname_translation[x ] == 'UNKNOWN']
     if cname_skip: print('Skip the remaining columns ({}).'.format(', '.join(cname_skip)))
-    cname = {v: k for k, v in iteritems(cname_translation)}  # inverse mapping (ignore case when key has multiple values)
+    cname = {v: k for k, v in six.iteritems(cname_translation)}  # inverse mapping (ignore case when key has multiple values)
     if not args.id: args.id = cname.get('SNP')
     if not args.pval: args.pval = cname.get('P')
     if not args.effectA: args.effectA = cname.get('A1')
