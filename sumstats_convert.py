@@ -52,6 +52,8 @@ def parse_args(args):
         help="Size of chunck to read the file.")
     parser_csv.add_argument("--force", action="store_true",
         default=False, help="Force overwrite target files if they exist.")
+    parser_csv.add_argument("--delim-whitespace", action="store_true",
+        default=False, help="Accept delim-whitespace file")
     parser_csv.set_defaults(func=make_csv)
 
     parser_mat = subparsers.add_parser("mat", help="Create mat files that can "
@@ -118,19 +120,25 @@ def make_csv(args):
     print("Reference dict contains %d snps." % len(ref_dict))
 
     print('Reading summary statistics file {}...'.format(args.sumstats_file))
+    print_header(args.sumstats_file, lines=5)
     out_columns = ["snpid", "pvalue", "zscore"]
     col_attr = ["id", "pval", "effectA", "otherA", "effect"]
     usecols = [getattr(args, c) for c in col_attr]
     # if signed_effect is true, take effect column as string to handle correctly
     # case of truncated numbers, e.g.: 0.00 and -0.00 should have different sign
     effect_col_dtype = str if args.signed_effect else np.float
-    reader = pd.read_table(args.sumstats_file, sep='\t', usecols=usecols,
-        chunksize=args.chunksize, dtype={args.effect:effect_col_dtype})
+
+    if args.delim_whitespace:
+        reader = pd.read_table(args.sumstats_file, delim_whitespace=True, usecols=usecols, chunksize=args.chunksize, dtype={args.effect:effect_col_dtype})
+    else:
+        reader = pd.read_table(args.sumstats_file, sep='\t', usecols=usecols, chunksize=args.chunksize, dtype={args.effect:effect_col_dtype})
+
     n_snps = 0
     with open(args.output_file, 'a') as out_f:
         out_f.write("%s\n" % "\t".join(out_columns))
         for i, chunk in enumerate(reader):
             chunk = chunk.loc[chunk[args.id].isin(ref_dict),:]
+            if chunk.empty: raise(ValueError("No SNPs match after joining with reference data"))
             gtypes = (chunk[args.effectA] + chunk[args.otherA]).apply(str.upper)
             # index of SNPs that have the same alleles as indicated in reference
             ind = [gt in ref_dict[sid]

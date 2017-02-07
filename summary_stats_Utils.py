@@ -4,6 +4,7 @@ import pandas as pd
 import gzip
 from six import iteritems, string_types
 from pkg_resources import parse_version
+from itertools import islice
 
 pdlow = parse_version(pd.__version__) < parse_version('0.17.0')
 
@@ -538,6 +539,13 @@ def basic_QC_direct(sumDat, outdir, dirCol='DIR', dirMth=1, dirDth=.5,
     tmpD = sumDat.loc[Idx==False,:]
     tmpD.to_csv(outfile, na_rep='NA', compression='gzip', index=False, sep='\t')
     return (sumDat.loc[Idx==True])
+
+def print_header(fh, lines=5):
+    (openfunc, compression) = get_compression(fh)
+    with openfunc(fh) as f:
+        for line in islice(f, lines):
+            line = line if isinstance(line, string_types) else line.decode('utf-8') 
+            print(line.rstrip('\n'))
 
 def read_header(fh):
     '''Read the first line of a file and returns a list with the column names.'''
