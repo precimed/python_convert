@@ -4,8 +4,7 @@ import scipy.stats as stats
 import scipy.io as sio
 import os, sys, argparse, time, logging, getpass
 import matplotlib.pyplot as plt
-from six import iteritems
-from summary_stats_Utils import *
+from GWAS_IO.summary_stats_Utils import *
 
 def read_sum_dat(sumFile, logger, kargs):
     '''
@@ -46,7 +45,7 @@ def read_sum_dat(sumFile, logger, kargs):
     sumDat = read_sumdata(sumFile, kargs.snpCol, kargs.pCol, kargs)
     logger.info('......')
     logger.info('Read {} SNPs'.format(sumDat.shape[0]))
-    colnames = ['SNP', 'P', 'A1', 'CHR', 'POS', 'Beta', 'A2', 'SIGN']
+    colnames = ['SNP', 'P', 'A1', 'CHR', 'POS', 'Beta', 'A2']
     if 'P' not in sumDat.columns:
         raise RuntimeError('No P value provided')
     if 'SNP' not in sumDat.columns:
@@ -62,16 +61,15 @@ def read_sum_dat(sumFile, logger, kargs):
     if not kargs.effCol:
         if not kargs.orCol:
             colnames.remove('Beta')
+            logger.warn('Directionality is not checked')
         else:
             sumDat.loc[:, 'Beta'] = np.log(sumDat.loc[:, 'OR'])
-            sumDat.drop('OR', axis=1, inplace=True)
+            sumDat.drop('OR',axis=1, inplace=True)
     if (not kargs.effACol) and (not kargs.othACol):
+        logger.warn('Directionality is not checked')
         colnames.remove('Beta')
         sumDat.drop('Beta', axis=1, inplace=True)
-    if 'SIGN' not in sumDat:
-        logger.warn('Directionality is not checked')
-        colnames.remove('SIGN')
-    if ((not kargs.posCol) or (not kargs.chrCol)) and (not kargs.chrPosCol):
+    if (not kargs.posCol) or (not kargs.chrCol):
         logger.info('Using SNP ID only for align Summary data to reference')
         colnames.remove('POS')
         colnames.remove('CHR')
@@ -80,14 +78,17 @@ def read_sum_dat(sumFile, logger, kargs):
         keys = ['SNP']
     else:
         keys = ['CHR', 'POS']
+    if kargs.NCol:
+        colnames.append('N')
     logger.info('Reading Summary stats done\n')
     logger.info('**** check P values *****')
-    sumDat = basic_QC_P(sumDat, kargs.O, 'P', logger)
+    sumDat = basic_QC_P(sumDat, kargs.outdir, 'P', logger)
     logger.info('**** END check P values *****')
     logger.info('**** check duplicated SNPs *****')
     sumDat, dup = deduplcate_sum(sumDat, 'P', keys)
+    print (sumDat.head())
     if dup.shape[0] > 0:
-        dupFile = os.path.join(kargs.O, 'Duplicated_snps.gz')
+        dupFile = os.path.join(kargs.outdir, 'Duplicated_snps.gz')
         logger.warning('There are {} duplicated SNPs in {}'.format(
             dup.shape[0], sumFile))
         logger.warning('\t The SNP with minimum p value included')
@@ -96,13 +97,8 @@ def read_sum_dat(sumFile, logger, kargs):
                 sep='\t')
         logger.info('**** END check duplicated SNPs *****')
     sumDat = sumDat.loc[:, colnames] 
+    print (sumDat.head())
     logger.info('\n')
-
-    logger.info('**** save standardized summary stats *****')
-    sumDatFile = os.path.join(kargs.O, 'Standardized_snps.gz')
-    sumDat.to_csv(sumDatFile, index=False, na_rep='NA', compression='gzip',
-                sep='\t')
-    logger.info('Save summary data to {}'.format(sumDatFile))
     return sumDat
 
 def read_ref_dat(refFile, logger):
@@ -118,11 +114,6 @@ def read_ref_dat(refFile, logger):
     Return:
     ------
     refDat,     DataFrame of reference dataset.
-
-    Example
-    -------
-    * https://s3-eu-west-1.amazonaws.com/biostat/2558411_ref.bim.gz
-    * https://s3-eu-west-1.amazonaws.com/biostat/9279485_ref.bim.gz
     '''
 
     if not os.access(refFile, os.R_OK):
@@ -211,7 +202,7 @@ def check_zscore(zvec, outdir, logger):
     plt.close()
     logger.info('Check converted Z-scores at Z_scores.png')
 
-def align2ref(sumDat, refDat, outdir, logger, kargs):
+def align2ref(sumDat, refDat, logger, kargs):
     '''
     Align given summary Data to in-house reference dataset.
 
@@ -219,7 +210,6 @@ def align2ref(sumDat, refDat, outdir, logger, kargs):
     ------
     sumDat,     DataFrame of summary statistics.
     refDat,     DataFrame of in-house reference dataset.
-    outdir,     Where to save figure
     logger,     Python logger for process information
     kargs,      NameSpace object of options
 
@@ -238,21 +228,21 @@ def align2ref(sumDat, refDat, outdir, logger, kargs):
         keys = ['SNP']
     else:
         keys = ['CHR', 'POS']
-    mDat, misDat1 = map_snps(refDat, sumDat, 'sum', keys, False)
-    mDat.to_csv(os.path.join(kargs.O, 'debug_merged.txt.gz'), 
+    mDat, misDat1 = map_snps(refDat, sumDat, keys, 'sum', False)
+    mDat.to_csv(os.path.join(kargs.outdir, 'debug_merged.txt.gz'), 
         sep='\t', index=False, na_rep='NA')
     logger.info('*** Align SNPs to reference ***') 
     if misDat1.shape[0] > 0:
-        outF = os.path.join(kargs.O, 'SNPs_not_in_sumFile.txt.gz')
+        outF = os.path.join(kargs.outdir, 'SNPs_not_in_sumFile.txt.gz')
         logger.info(
            'There are {} SNPs in reference not in given summary file'.format(
                misDat1.shape[0]))
         logger.info('Details see {}'.format(outF))
         misDat1.to_csv(outF, index=False, sep='\t', compression='gzip',
                 na_rep='NA')
-    dummy, misDat2 = map_snps(sumDat, refDat, 'ref', keys)
+    dummy, misDat2 = map_snps(sumDat, refDat, keys, 'ref')
     if misDat2.shape[0] > 0:
-        outF = os.path.join(kargs.O, 'SNPs_not_in_refFile.txt.gz')
+        outF = os.path.join(kargs.outdir, 'SNPs_not_in_refFile.txt.gz')
         logger.info(
             'There are {} SNPs in summary file not in reference'.format(
                 misDat2.shape[0]))
@@ -269,10 +259,10 @@ def align2ref(sumDat, refDat, outdir, logger, kargs):
         np.sum(ambivec)))
     logger.info('Zscores of ambiguously coded SNPs were set to NaN')
     ambDat = mDat.loc[ambivec,:]
-    ambDat.to_csv(os.path.join(kargs.O, 'Ambiguous_data.txt.gz'),
+    ambDat.to_csv(os.path.join(kargs.outdir, 'Ambiguous_data.txt.gz'),
             compression='gzip', sep='\t', index=False, na_rep='NA')
     logger.info('Save SNPs with ambiguous allele coding into {}'.format(
-        os.path.join(kargs.O, 'Ambiguous_data.txt.gz')))
+        os.path.join(kargs.outdir, 'Ambiguous_data.txt.gz')))
     logpvec = -np.log10(mDat.loc[:,'P'])
     if 'A1' not in sumDat.columns:
         zvec = signvec.copy()
@@ -284,18 +274,24 @@ def align2ref(sumDat, refDat, outdir, logger, kargs):
             idx1 = (((mDat.A1==mDat.refA1)&(mDat.A2==mDat.refA2)) | ((mDat.A1==mDat.A1c)&(mDat.A2==mDat.A2c))).values
             idx_1 = (((mDat.A1==mDat.refA2)&(mDat.A2==mDat.refA1)) | ((mDat.A1==mDat.A2c)&(mDat.A2==mDat.A1c))).values
     signvec[idx1] = 1.0; signvec[idx_1] = -1.0; signvec[ambivec] = np.nan
-    signvec = signvec * mDat.loc[:,'SIGN'].values
+    signvec = signvec * np.sign(mDat.loc[:,'Beta'].values)
     zvec = np.abs(stats.norm.ppf(mDat.loc[:,'P'].values * 0.5)) * signvec
     logger.info('{} SNPs have direction opposite to refference and changed'.format(np.sum(idx_1)))
     mDat.loc[:, 'newZ'] = zvec
     tmpMdat = mDat.loc[idx_1 ,:]
-    tmpMdat.to_csv(os.path.join(outdir, 'flip_data.txt.gz'),
+    tmpMdat.to_csv(os.path.join(kargs.outdir, 'flip_data.txt.gz'),
         index=False, sep='\t', compression='gzip',na_rep='NA')
-    summarize_merge(sumDat, mDat, misDat2, outdir, logger)
+    print mDat.columns
+    summarize_merge(sumDat, mDat, misDat2, kargs.outdir, logger)
     logger.info('\n')
-    return(logpvec.values, zvec)
+    if kargs.NCol:
+        print 'I am here'
+        print mDat.head()
+        return(logpvec.values, zvec, mDat.loc[:,'N'].values)
+    else:
+        return(logpvec.values, zvec, [])
 
-def save2mat(logpvec, zvec, trait, outdir, logger):
+def save2mat(logpvec, zvec, Nvec, trait, outdir, logger):
     '''
     Save data in Matlab dataset.
 
@@ -310,7 +306,13 @@ def save2mat(logpvec, zvec, trait, outdir, logger):
     No return.
     '''
     outfile = os.path.join(outdir, trait)
-    tmpdict = {'logpvec_'+trait.lower():logpvec, 'zvec_'+trait.lower():zvec}
+    if len(Nvec) == len(logpvec):
+        print (np.sum(np.isfinite(Nvec)))
+        print (np.sum(np.isfinite(logpvec)))
+        tmpdict = {'logpvec_'+trait.lower():logpvec, 
+                'zvec_'+trait.lower():zvec, 'nvec_'+trait.lower():Nvec}
+    else:
+        tmpdict = {'logpvec_'+trait.lower():logpvec, 'zvec_'+trait.lower():zvec}
     sio.savemat(outfile, tmpdict, format='5', do_compression=False,
             oned_as='column')
     logger.info('Save converted data to {}'.format(outfile+'.mat'))
@@ -319,15 +321,15 @@ def convert_sum():
     parser = argparse.ArgumentParser(prog="Preprocess Summary stats",
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             description='Preprocess summary stats for matlab') 
-    parser.add_argument('-F', type=str, help='Summary stats file')
-    parser.add_argument('-Ref', type=str, help='Reference file (optional);')
-    parser.add_argument('-T', type=str, help='Trait Name')
-    parser.add_argument('-O', type=str, help='Output DIR', default=".")
+    parser.add_argument('--sumFile', type=str, help='Summary stats file')
+    parser.add_argument('--ref', type=str, help='Reference file')
+    parser.add_argument('--trait', type=str, help='Trait Name')
+    parser.add_argument('--outdir', type=str, help='Output DIR', default=".")
     parser.add_argument('--forceID', action='store_true', default=False,
             help='Force using SNP ID other than position')
     parser.add_argument('--snpCol', type=str, help='SNP ID field', 
-            default=None)
-    parser.add_argument('--pCol', type=str, help='P value field', default=None)
+            default='SNP')
+    parser.add_argument('--pCol', type=str, help='P value field', default='P')
     parser.add_argument('--effACol', type=str, help='Effective allele field', 
             default=None)
     parser.add_argument('--othACol', type=str, help='The other allele field', 
@@ -336,52 +338,28 @@ def convert_sum():
             default=None)
     parser.add_argument('--orCol', type=str, help='Odds ratio field', 
             default=None)
+    parser.add_argument('--NCol', type=str, help='sample size per SNP', 
+            default=None)
     parser.add_argument('--posCol', type=str,
             help='Genomic position field',default=None) 
     parser.add_argument('--chrCol', type=str,
             help='Chromosome field',default=None) 
-    parser.add_argument('--chrPosCol', type=str,
-            help='Field name for a single column with both chromosome and position ' +
-                 '(joined by colon, example: "8:103044620")', default=None) 
     args = parser.parse_args()
-    if args.O is None: raise ValueError("Output DIR is not provided")
-    if args.F is None: raise ValueError("Summary stats file is not provided")
-    if not os.access(args.O, os.F_OK):
-        os.mkdir(args.O)
-    if not os.access(args.F, os.R_OK):
-        raise ValueError("Can't read summary stats file: {}".format(args.F))
-    if args.Ref and not os.access(args.Ref, os.R_OK):
-        raise ValueError("Can't read reference file: {}".format(args.Ref))
-    logfile = os.path.join(args.O, 'convert_' + args.T + '.log')
+    if not os.access(args.outdir, os.F_OK):
+        os.mkdir(args.outdir)
+    if not os.access(args.sumFile, os.R_OK):
+        raise ValueError("Can't read summary stats file: {}".format(args.sumFile))
+    if not os.access(args.ref, os.R_OK):
+        raise ValueError("Can't read reference file: {}".format(args.ref))
+    logfile = os.path.join(args.outdir, 'convert_' + args.trait + '.log')
     logger = logging.getLogger()
-    logger.addHandler(logging.FileHandler(logfile))
+    logger.addHandler(logging.FileHandler(logfile,mode='w'))
     logger.setLevel(logging.DEBUG)
-
-    cname_translation = find_column_name_translation(args.F,
-        snp=args.snpCol, chromosome=args.chrCol, pos=args.posCol,
-        a1=args.effACol, a2=args.othACol,
-        p=args.pCol, odds_ratio=args.orCol, beta=args.effCol)
-    cname_description = {x: describe_cname[cname_translation[x]] for x in cname_translation if cname_translation[x] != 'UNKNOWN'}
-    print('Interpreting column names as follows:')
-    print('\n'.join([x + ':\t' + cname_description[x] for x in cname_description]) + '\n')
-    cname_skip = [x for x in cname_translation if cname_translation[x ] == 'UNKNOWN']
-    if cname_skip: print('Skip the remaining columns ({}).'.format(', '.join(cname_skip)))
-    cname = {v: k for k, v in iteritems(cname_translation)}  # inverse mapping (ignore case when key has multiple values)
-    if not args.snpCol: args.snpCol = cname.get('SNP')
-    if not args.pCol: args.pCol = cname.get('P')
-    if not args.effACol: args.effACol = cname.get('A1')
-    if not args.othACol: args.othACol = cname.get('A2')
-    if not args.effCol: args.effCol = next(iter(filter(None, [cname.get('BETA'), cname.get('LOG_ODDS'), cname.get('Z')])), None)
-    if not args.orCol: args.orCol = cname.get('OR')
-    if not args.posCol: args.posCol = cname.get('POS')
-    if not args.chrCol: args.chrCol = cname.get('CHR')
-
-    sumDat = read_sum_dat(args.F, logger, args)
-    if args.Ref:
-        refDat = read_ref_dat(args.Ref, logger)
-        logpvec, zvec = align2ref(sumDat, refDat, args.O, logger, args)
-        check_zscore(zvec, args.O, logger)
-        save2mat(logpvec, zvec, args.T, args.O, logger)
+    sumDat = read_sum_dat(args.sumFile, logger, args)
+    refDat = read_ref_dat(args.ref, logger)
+    logpvec, zvec, Nvec = align2ref(sumDat, refDat, logger, args)
+    check_zscore(zvec, args.outdir, logger)
+    save2mat(logpvec, zvec, Nvec, args.trait, args.outdir, logger)
     logger.info('\n**********\nFinished at {}'.format(time.ctime()))
     logger.info('Author: {} at {}'.format(getpass.getuser(), time.ctime()))
     
@@ -392,7 +370,8 @@ if __name__ == "__main__":
     tsts = time.time()
     convert_sum()
     print
-    print ('Finish at {}'.format(time.ctime()))
+    print 'Finish at %s' % time.ctime()
     ted = time.time()
-    print ('Time taken {} mins {} sec'.format((ted-tsts)//60, np.round(ted-tsts) % 60))
+    print 'Time taken %d mins %d sec' % ((ted-tsts)//60, np.round(ted-tsts) %
+            60)
 

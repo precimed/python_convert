@@ -1,141 +1,13 @@
+from __future__ import division
 import sys, os, re, logging, datetime
 import numpy as np
 import pandas as pd
-import gzip
-from six import iteritems, string_types
+import scipy.stats as stats
+import matplotlib.pyplot as plt
+import seaborn as sns
 from pkg_resources import parse_version
-from itertools import islice
 
 pdlow = parse_version(pd.__version__) < parse_version('0.17.0')
-
-def _get_str_list_sign(str_list):
-    return np.array([-1 if e[0]=='-' else 1 for e in str_list], dtype=np.int)
-
-null_values = {
-
-    'LOG_ODDS': 0,
-    'BETA': 0,
-    'OR': 1,
-    'Z': 0
-}
-
-default_cnames = {
-
-    # RS NUMBER
-    'SNP': 'SNP',
-    'MARKERNAME': 'SNP',
-    'SNPID': 'SNP',
-    'RS': 'SNP',
-    'RSID': 'SNP',
-    'RS_NUMBER': 'SNP',
-    'RS_NUMBERS': 'SNP',
-    # CHROMOSOME
-    'CHR': 'CHR',
-    'CHROMOSOME' : 'CHR',
-    # POSITION
-    'POS': 'POS',
-    'BP': 'POS',
-    'POSITION' : 'POS',
-    # NUMBER OF STUDIES
-    'NSTUDY': 'NSTUDY',
-    'N_STUDY': 'NSTUDY',
-    'NSTUDIES': 'NSTUDY',
-    'N_STUDIES': 'NSTUDY',
-    # P-VALUE
-    'P': 'P',
-    'PVALUE': 'P',
-    'P_VALUE':  'P',
-    'PVAL': 'P',
-    'P_VAL': 'P',
-    'GC_PVALUE': 'P',
-    # ALLELE 1
-    'A1': 'A1',
-    'ALLELE1': 'A1',
-    'ALLELE_1': 'A1',
-    'EFFECT_ALLELE': 'A1',
-    'REFERENCE_ALLELE': 'A1',
-    'INC_ALLELE': 'A1',
-    'EA': 'A1',
-    # ALLELE 2
-    'A2': 'A2',
-    'ALLELE2': 'A2',
-    'ALLELE_2': 'A2',
-    'OTHER_ALLELE': 'A2',
-    'NON_EFFECT_ALLELE': 'A2',
-    'NON_EFF_ALLELE': 'A2',
-    'DEC_ALLELE': 'A2',
-    'NEA': 'A2',
-    # N
-    'N': 'N',
-    'NCASE': 'N_CAS',
-    'CASES_N': 'N_CAS',
-    'N_CASE': 'N_CAS',
-    'N_CASES': 'N_CAS',
-    'N_CONTROLS': 'N_CON',
-    'N_CAS': 'N_CAS',
-    'N_CON': 'N_CON',
-    'N_CASE': 'N_CAS',
-    'NCONTROL': 'N_CON',
-    'CONTROLS_N': 'N_CON',
-    'N_CONTROL': 'N_CON',
-    'WEIGHT': 'N',  # metal does this. possibly risky.
-    # SIGNED STATISTICS
-    'ZSCORE': 'Z',
-    'Z-SCORE': 'Z',
-    'GC_ZSCORE': 'Z',
-    'Z': 'Z',
-    'OR': 'OR',
-    'B': 'BETA',
-    'BETA': 'BETA',
-    'LOG_ODDS': 'LOG_ODDS',
-    'EFFECTS': 'BETA',
-    'EFFECT': 'BETA',
-    'SIGNED_SUMSTAT': 'SIGNED_SUMSTAT',
-    # STANDARD ERROR
-    'SE' : 'SE',
-    # INFO
-    'INFO': 'INFO',
-    # MAF
-    'EAF': 'FRQ',
-    'FRQ': 'FRQ',
-    'MAF': 'FRQ',
-    'FRQ_U': 'FRQ',
-    'F_U': 'FRQ',
-}
-
-describe_cname = {
-    'SNP': 'Variant ID (e.g., rs number)',
-    'CHR': 'Chromosome number',
-    'POS': 'Base-pair position',
-    'P': 'p-Value',
-    'A1': 'Allele 1, interpreted as ref allele for signed sumstat.',
-    'A2': 'Allele 2, interpreted as non-ref allele for signed sumstat.',
-    'N': 'Sample size',
-    'N_CAS': 'Number of cases',
-    'N_CON': 'Number of controls',
-    'Z': 'Z-score (0 --> no effect; above 0 --> A1 is trait/risk increasing)',
-    'OR': 'Odds ratio (1 --> no effect; above 1 --> A1 is risk increasing)',
-    'BETA': '[linear/logistic] regression coefficient (0 --> no effect; above 0 --> A1 is trait/risk increasing)',
-    'LOG_ODDS': 'Log odds ratio (0 --> no effect; above 0 --> A1 is risk increasing)',
-    'SE': 'standard error of the effect size',
-    'INFO': 'INFO score (imputation quality; higher --> better imputation)',
-    'FRQ': 'Allele frequency',
-    'SIGNED_SUMSTAT': 'Directional summary statistic as specified by --signed-sumstats.',
-    'NSTUDY': 'Number of studies in which the SNP was genotyped.',
-    'UNKNOWN': 'Unknown column type (will be skipped).'
-}
-
-def _fix_chromosome_labels(sumDat, v='CHR'):
-    sumDat.loc[:,v] = pd.Series([re.sub('[chrCHR]','',
-        str(c)) for c in sumDat.loc[:,v]])
-    sumDat.loc[sumDat.loc[:, v]=='X', v] = '23'
-    sumDat.loc[sumDat.loc[:, v]=='x', v] = '23'
-    sumDat.loc[sumDat.loc[:, v]=='Y', v] = '24'
-    sumDat.loc[sumDat.loc[:, v]=='y', v] = '24'
-    sumDat.loc[sumDat.loc[:, v]=='M', v] = '25'
-    sumDat.loc[sumDat.loc[:, v]=='m', v] = '25'
-    sumDat.loc[:,v] = sumDat.loc[:, v].astype('float').astype('int')
-
 
 def read_sumdata(sumFile, snpCol, pCol, kargs):
     '''
@@ -151,10 +23,7 @@ def read_sumdata(sumFile, snpCol, pCol, kargs):
                     ORCol,      Field name for Odds ratio
                     effACol,    Field name for effective allele 
                     othACol,    Field name for other allele 
-                    chrCol,     Field name for chromosome number
                     posCol,     Field name for genomic position
-                    chrPosCol,  Field name for a single column with both chromosome and position
-                                (joined by colon, example: "8:103044620")
                     infoCol,    Field name for imputation quality score
                     NCol,       Field name for sample size
                     sep,        Field separator
@@ -175,86 +44,128 @@ def read_sumdata(sumFile, snpCol, pCol, kargs):
                         recode chrM--> 25
 
     '''
-    print(pd.__version__)
     if type(kargs) != dict:
         try:
             kargs = vars(kargs)
         except:
             raise
     if not os.access(sumFile, os.R_OK):
-        raise ValueError('Unable to read summary file: %s' % (sumFile))
+        raise ValueError, 'Unable to read summary file: %s' % (sumFile)
     try:
-        dtype_map = {kargs['effCol']: str} if kargs['effCol'] else {}
         if 'sep' in kargs:
-            sumDat = pd.read_table(sumFile, sep=kargs['sep'], dtype=dtype_map)
+            sumDat = pd.read_table(sumFile,sep=kargs['sep'],
+                    na_values=[' ', '#N/A','\N','N/A','NA','NULL','NaN', 'nan'])
         else:
-            sumDat = pd.read_table(sumFile, dtype=dtype_map)
-            print(sumDat.columns)
-            print(sumDat.shape)
-        if sumDat.shape[1] <2: 
-            sumDat = pd.read_table(sumFile, sep=' *', dtype=dtype_map)
-            if sumDat.shape[1] < 2:
-                sumDat = pd.read_table(sumFile, sep='[ +|\t]', engine='python', dtype=dtype_map)
-                if sumDat.shape[1] < 2:
-                    raise (ValueError(
+            sumDat = pd.read_table(sumFile)
+        if sumDat.shape[1] <3: 
+            sumDat = pd.read_table(sumFile, sep=' *',
+                    na_values=[' ','#N/A','\N','N/A','NA','NULL','NaN', 'nan'])
+            if sumDat.shape[1] < 3:
+                sumDat = pd.read_table(sumFile, sep='[ +|\t]', engine='python',
+                    na_values=[' ', '#N/A','\N','N/A','NA','NULL','NaN', 'nan'])
+                if sumDat.shape[1] < 3:
+                    raise (ValueError, 
                       "Can't figure out delimiter in %s: tab or space" % (
-                          sumFile,)))
+                          sumFile,))
     except:
         raise
     try:
         sumDat.loc[:,pCol] = sumDat.loc[:,pCol].astype('float') 
         sumDat.rename(columns={snpCol:'SNP', pCol:'P'},inplace=True)
-        if kargs['effCol']:
-            # effect column has str type
-            # -1 if effect starts with '-' else 1
-            sumDat.loc[:,'SIGN'] = _get_str_list_sign(sumDat[kargs['effCol']])
-        elif kargs['orCol'] :
-            # effect column has np.float type
-            # 1 if effect >=1 else -1
-            if (sumDat[kargs['orCol']] < 0).any():
-                raise ValueError("{} column contains negative values; consider using --effCol instead of --orCol".format(kargs['orCol']))
-            effect_sign = np.sign(sumDat.loc[:, kargs['orCol']] - 1)
-            effect_sign[effect_sign == 0] = 1             # ToBe discussed --- how do we interpred OR == 1.0
-            sumDat.loc[:,'SIGN'] = effect_sign
-        for k, v in iteritems(kargs):
-            print('{} {}'.format(k, v))
+        print sumDat.columns[0]
+        misIdx = sumDat.SNP.isnull() | sumDat.P.isnull()
+        for k, v in kargs.iteritems():
             if v== None:
                 continue
             if k == 'effCol': 
                 sumDat.loc[:,v] = sumDat.loc[:, v].astype('float') 
+                if v != 'Beta' and 'Beta' in sumDat.columns:
+                    sumDat.drop('Beta', axis=1, inplace=True)
                 sumDat.rename(columns={v:'Beta'},inplace=True)
-            if k == 'orCol': 
+                misIdx = misIdx | sumDat.Beta.isnull()
+            if k == 'ORCol': 
+                if v != 'OR' and 'OR' in sumDat.columns:
+                    sumDat.drop('OR', axis=1, inplace=True)
                 sumDat.loc[:,v] = sumDat.loc[:, v].astype('float') 
                 sumDat.rename(columns={v:'OR'},inplace=True)
+                misIdx = misIdx | sumDat.OR.isnull()
             elif k=='infoCol':
+                if v != 'INFO' and 'INFO' in sumDat.columns:
+                    sumDat.drop('INFO', axis=1, inplace=True)
                 sumDat.loc[:,v] = sumDat.loc[:, v].astype('float') 
                 sumDat.rename(columns={v:'INFO'},inplace=True)
             elif k=='effACol': 
+                if v != 'A1' and 'A1' in sumDat.columns:
+                    sumDat.drop('A1', axis=1, inplace=True)
                 sumDat.loc[:,v] = sumDat.loc[:, v].str.upper()
                 sumDat.rename(columns={v:'A1'},inplace=True)
             elif k=='othACol': 
+                if v != 'A2' and 'A2' in sumDat.columns:
+                    sumDat.drop('A2', axis=1, inplace=True)
                 sumDat.loc[:,v] = sumDat.loc[:, v].str.upper()
                 sumDat.rename(columns={v:'A2'},inplace=True)
             elif k=='posCol': 
+                if v != 'POS' and 'POS' in sumDat.columns:
+                    sumDat.drop('POS', axis=1, inplace=True)
+                sumDat.loc[:,v].fillna(-9, inplace=True)
                 sumDat.loc[:,v] = sumDat.loc[:, v].astype('int')
                 sumDat.rename(columns={v:'POS'},inplace=True)
             elif k=='NCol': 
-                sumDat.loc[:,v] = sumDat.loc[:, v].astype('int')
+                if v != 'N' and 'N' in sumDat.columns:
+                    sumDat.drop('N', axis=1, inplace=True)
+                sumDat.loc[:,v].fillna(-9, inplace=True)
+                sumDat.loc[:,v] = sumDat.loc[:, v].astype('float').astype('int')
                 sumDat.rename(columns={v:'N'},inplace=True)
             elif k=='chrCol':
+                if v != 'CHR' and 'CHR' in sumDat.columns:
+                    sumDat.drop('CHR', axis=1, inplace=True)
+                sumDat.loc[:,v].fillna(-9, inplace=True)
+                sumDat.loc[:,v] = format_chr(sumDat.loc[:,v])
                 sumDat.rename(columns={v:'CHR'},inplace=True)
-                _fix_chromosome_labels(sumDat)
-            elif k=='chrPosCol':
-                 sumDat['CHR'], sumDat['POS'] = zip(*sumDat[v].apply(lambda x: x.split(':', 1)))
-                 sumDat.loc[:,'POS'] = sumDat.loc[:,'POS'].apply(lambda x: x if x.isdigit() else '-1').astype('int')
-                 _fix_chromosome_labels(sumDat)
             else:
                 pass # leave other names as it is
     except KeyError:
         raise
     except:
         raise #ValueError, 'effect and/or p value is not numeric'
-    return sumDat
+    return sumDat.loc[misIdx==False,:]
+
+def format_chr(chrvec):
+    '''
+    Reformat chromosome names.
+
+    Input:
+    ------
+    Vector of chromosome IDs
+
+    Output:
+    -------
+    Vector of cleaned chromosome IDs
+
+    Note:
+    * Remove "chr/Chr/CHR/MT/mt" strings in the name
+    * Change chrX to 23, ChrY to 24, MT to 25
+    '''
+    try:
+        chrvec = chrvec.astype('str')
+        tmpchrvec = chrvec.str.replace('[chrCHR]', '', case=False)
+        tmpchrvec[tmpchrvec=='X'] = '23'
+        tmpchrvec[tmpchrvec=='x'] = '23'
+        tmpchrvec[tmpchrvec=='Y'] = '24'
+        tmpchrvec[tmpchrvec=='y'] = '24'
+        tmpchrvec[tmpchrvec=='M'] = '25'
+        tmpchrvec[tmpchrvec=='m'] = '25'
+        tmpchrvec[tmpchrvec=='MT'] = '25'
+        tmpchrvec[tmpchrvec=='mt'] = '25'
+        # TO-DO: Bellow is anoying
+        tmpchrvec[tmpchrvec=='NA'] = '-9'
+        tmpchrvec[tmpchrvec.isnull()] = '-9'
+        tmpchrvec[tmpchrvec=='nan'] = '-9'
+        tmpchrvec[tmpchrvec==' '] = '-9'
+        tmpchrvec = tmpchrvec.astype('float').astype('int')
+        return tmpchrvec
+    except:
+        raise
 
 def deduplcate_sum(sumDat, pCol, keys):
     '''
@@ -280,19 +191,23 @@ def deduplcate_sum(sumDat, pCol, keys):
     if type(keys) == str:
         keys = [keys]
     if pCol not in sumDat.columns:
-        raise ValueError('%s not in columns names' % (pCol,))
+        raise ValueError, '%s not in columns names' % (pCol,)
     for k in keys:
         if k not in sumDat.columns:
-            raise ValueError('%s not in columns names' % (k,))
+            raise ValueError, '%s not in columns names' % (k,)
     dup_idx = sumDat.duplicated(subset=keys, keep=False)
     cleanDat = sumDat.loc[dup_idx==False,:]
     dup = sumDat.loc[dup_idx,:]
     if dup.shape[0] > 2:
+        for k in keys:
+            if (np.sum(dup.loc[:,k].isnull())== dup.shape[0]) or \
+                    (np.sum(dup.loc[:,k]==-9)== dup.shape[0]) :
+                return cleanDat.sort_values(by=list(keys)), dup
         minPDat = sumDat.loc[dup.groupby(by=list(keys))[pCol].idxmin(),:]
         cleanDat = cleanDat.append(minPDat)
     return cleanDat.sort_values(by=list(keys)), dup.sort_values(by=list(keys))
 
-def map_snps(dat1, dat2, rsufix, keys, clean=True): 
+def map_snps(dat1, dat2, keys, suffix, clean=True): 
     '''
     Find data item in/not first DataFrame(dat1) also in second DataFrame(dat2).
 
@@ -316,17 +231,63 @@ def map_snps(dat1, dat2, rsufix, keys, clean=True):
         keys = [keys]
     for k in keys:
         if k not in dat1.columns:
-            raise ValueError('%s not in columns names of dat1' % (k,))
+            raise ValueError, '%s not in columns names of dat1' % (k,)
         if k not in dat2.columns:
-            raise ValueError('%s not in columns names of dat2' % (k,))
-    tmpD1 = dat1.set_index(keys = list(keys), drop=False)
-    tmpD2 = dat2.set_index(keys = list(keys), drop=False)
-    mDat = tmpD1.join(tmpD2, rsuffix=rsufix, how='left', sort=False)
-    miss_idx = mDat.loc[:, [k+rsufix for k in keys]].isnull().all(axis=1)
+            raise ValueError, '%s not in columns names of dat2' % (k,)
+    d2names = [k for k in dat2.columns if k not in dat1.columns]
+    if d2names == []:
+        d2names = [k+'_'+suffix for k in dat2.columns if k not in keys]
+    mDat = pd.merge(dat1, dat2, on=keys, how='left', sort=False,
+            suffixes=('','_'+suffix))
+    missIdx = mDat.loc[:, [k for k in d2names]].isnull().all(axis=1)
     if clean:
-        return mDat.loc[miss_idx==False, :], mDat.loc[miss_idx==True,:]
+        return mDat.loc[missIdx==False, :], mDat.loc[missIdx==True,:]
     else:
-        return mDat, mDat.loc[miss_idx==True,:]
+        return mDat, mDat.loc[missIdx==True,:]
+
+def flip_snps(sumDat, suffix): 
+    '''
+    Flip strand for merged sumData.
+
+    Input:
+    ------
+    sumDat,     Summary statistics DataFrame.
+    suffix,     Suffix for the common column names.
+
+    Return:
+    ------
+    mDat,       DataFrame with common items
+    missDat,    DataFrame with only item only existing in dat1.
+
+    Note:
+    -----
+    * A1, A2 and A1_suffix and A2_suffix must exists in sumDat
+    * original A1 and A2 will be aligned with A1_suffix and A2_suffix
+    ** TO-DO
+    **   may be risky but the pool-man's hope
+    '''
+    tmpNames = sumDat.columns
+    refA1Col = 'A1_'+suffix
+    refA2Col = 'A2_'+suffix
+    if ('A1' not in tmpNames) or ('A2' not in tmpNames) or \
+            (refA1Col not in tmpNames) or (refA2Col not in tmpNames):
+        raise (RuntimeError, 'Cant check strand without knowing A1, A2')
+    nonflipIdx1 = (sumDat.A1 == sumDat.loc[:,refA1Col]) & (sumDat.A2 ==
+            sumDat.loc[:,refA2Col])
+    nonflipIdx2 = (sumDat.A1 == sumDat.loc[:,refA2Col]) & (sumDat.A2 ==
+            sumDat.loc[:,refA1Col])
+    flipIdx = (nonflipIdx1==False) & (nonflipIdx2==False)
+    sumDat.loc[flipIdx, 'A1'] = sumDat.A1[flipIdx].map({'A':'T', 'T':'A',
+        'C':'G', 'G':'C'})
+    sumDat.loc[flipIdx, 'A2'] = sumDat.A2[flipIdx].map({'A':'T', 'T':'A',
+        'C':'G', 'G':'C'})
+    flipedIdx1 = (sumDat.A1 == sumDat.loc[:,refA1Col]) & (sumDat.A2 ==
+            sumDat.loc[:,refA2Col])
+    flipedIdx2 = (sumDat.A1 == sumDat.loc[:,refA2Col]) & (sumDat.A2 ==
+            sumDat.loc[:,refA1Col])
+    flipedIdx = (flipedIdx2==False) & (flipedIdx1==False)
+    #assert np.sum(flipedIdx) ==0
+    return sumDat
 
 def basic_QC_P(sumDat, outdir, pCol='P', logger=None):
     '''
@@ -351,8 +312,8 @@ def basic_QC_P(sumDat, outdir, pCol='P', logger=None):
 
     '''
     if pCol not in sumDat.columns:
-        raise (ValueError('{} not in the data frame.'.format(pCol)))
-    Idx = ((sumDat.loc[:, pCol] <=1.0) & (sumDat.loc[:, pCol]>=0))
+        raise (ValueError, '{} not in the data frame.'.format(pCol))
+    Idx = ((sumDat.loc[:, pCol] <=1.0) & (sumDat.loc[:, pCol]>=0)).values
     if not logger:
         logger = logging.getLogger()
         logger.addHandler(logging.StreamHandler())
@@ -365,7 +326,8 @@ def basic_QC_P(sumDat, outdir, pCol='P', logger=None):
     tmpD.to_csv(outfile, na_rep='NA', compression='gzip', index=False, sep='\t')
     return (sumDat.loc[Idx==True])
 
-def basic_QC_Info(sumDat, outdir, infoCol='INFO', infoTh=0.5, logger=None):
+def basic_QC_Info(sumDat, outdir, infoCol='INFO', 
+        infoTh=0.5, pCol='P',logger=None):
     '''
     Perform qc based on P value information in the summary data.
 
@@ -375,6 +337,7 @@ def basic_QC_Info(sumDat, outdir, infoCol='INFO', infoTh=0.5, logger=None):
     outdir,     Directory of saving intermediate result
     infoCol,    Field name of Imputation info
     infoTh,     Threshold of good impuation
+    pCol,       Field name of P value
     logger,     object logging to log progress (None)
     
     Return:
@@ -389,11 +352,24 @@ def basic_QC_Info(sumDat, outdir, infoCol='INFO', infoTh=0.5, logger=None):
 
     '''
     if infoCol not in sumDat.columns:
-        raise (ValueError('{} not in the data frame.'.format(infoCol)))
-    Idx = ((sumDat.loc[:,infoCol] <=1.05) & (sumDat.loc[:,infoCol]>=infoTh))
+        raise (ValueError, '{} not in the data frame.'.format(infoCol))
+    #Idx = ((sumDat.loc[:,infoCol] <= 1.05) & (sumDat.loc[:,infoCol] >= infoTh))
+    Idx = (sumDat.loc[:,infoCol] >= infoTh)
+    Idx = Idx.values
     if not logger:
         logger = logging.getLogger()
         logger.addHandler(logging.StreamHandler())
+    tag = np.empty((sumDat.shape[0],), dtype='|S10'); tag.fill('Clean')
+    tag[Idx==False] = 'Removed'
+    tmpdf = pd.DataFrame({'Info':sumDat.loc[:,infoCol], 
+        '-log10P':-np.log10(sumDat.loc[:,pCol])})
+    tmpdf.loc[:, 'Tag'] = tag
+    g = sns.FacetGrid(tmpdf, col='Tag', sharex=False, sharey=False)
+    g.map(plt.scatter, "Info", "-log10P")
+    g.savefig(os.path.join(outdir, 'Low_Info_SNPs.png'))
+    g2 = sns.FacetGrid(tmpdf, col='Tag', sharex=False, sharey=False)
+    g2.map(plt.hist, "Info")
+    g2.savefig(os.path.join(outdir, 'Low_Info_SNPs_hist.png'))
     outfile = os.path.join(outdir, 'Low_INFO_SNPs.txt.gz')
     logger.info ('Filter out SNPs with Imputation info:\n-----------------')
     logger.info ('{} SNPs with low INFO'.format(np.sum(Idx==False)))
@@ -401,9 +377,10 @@ def basic_QC_Info(sumDat, outdir, infoCol='INFO', infoTh=0.5, logger=None):
     logger.info('\n-------------------------------------------')
     tmpD = sumDat.loc[Idx==False,:]
     tmpD.to_csv(outfile, na_rep='NA', compression='gzip', index=False, sep='\t')
-    return (sumDat.loc[Idx==True])
+    return (sumDat.loc[Idx==True,:])
 
-def basic_QC_Freq(sumDat, outdir, freqCol='Freq', freqTh=0.05, logger=None):
+def basic_QC_Freq(sumDat, outdir, freqCol='Freq', freqTh=0.05, pCol='P',
+        logger=None):
     '''
     Perform qc based on frequency of effective allele.
 
@@ -420,6 +397,7 @@ def basic_QC_Freq(sumDat, outdir, freqCol='Freq', freqTh=0.05, logger=None):
     Note:
     -----
     Remove SNPs with effective allele frequence < freqTh 
+    Give up QC if 80% of data failed QC
 
     TO-DO:
     ------
@@ -427,23 +405,41 @@ def basic_QC_Freq(sumDat, outdir, freqCol='Freq', freqTh=0.05, logger=None):
 
     '''
     if freqCol not in sumDat.columns:
-        raise (ValueError('{} not in the data frame.'.format(freqCol)))
-    Idx = ((sumDat.loc[:,freqCol] >= freqTh) & 
-            (sumDat.loc[:,freqCol] <= 1-freqTh))
+        raise (ValueError, '{} not in the data frame.'.format(freqCol))
+    freq = sumDat.loc[:,freqCol].values
+    Idx = ((freq >= freqTh) & (freq <= 1-freqTh))
     if not logger:
         logger = logging.getLogger()
         logger.addHandler(logging.StreamHandler())
+    tmpdf = pd.DataFrame({'H':2*(freq)*(1-freq), 
+        '-log10P':-np.log10(sumDat.loc[:,pCol])})
+    tag = np.empty((sumDat.shape[0],), dtype='|S10'); tag.fill('Clean')
+    tag[Idx==False] = 'Removed'
+    tmpdf.loc[:, 'Tag'] = tag
+    g = sns.FacetGrid(tmpdf, col='Tag', sharex=False, sharey=False)
+    g.map(plt.scatter, "H", "-log10P")
+    g.savefig(os.path.join(outdir, 'Maf_filter_SNPs.png'))
+    g2 = sns.FacetGrid(tmpdf, col='Tag', sharex=False, sharey=False)
+    g2.map(plt.hist, "H")
+    g2.savefig(os.path.join(outdir, 'Maf_filter_SNPs_hist.png'))
     outfile = os.path.join(outdir, 'MAF_filtered_SNPs.txt.gz')
-    logger.info ('Filter out SNPs with effective allele frequence:\n-----------------')
+    logger.info ('Filter out SNPs with effective allele frequence:\n---------')
     logger.info ('{} SNPs with frequence < {} '.format(np.sum(Idx==False),
         freqTh))
     logger.info ('\n save removed SNPs  to "{}"'.format(outfile))
     logger.info('\n-------------------------------------------')
-    tmpD = sumDat.loc[Idx==False,:]
-    tmpD.to_csv(outfile, na_rep='NA', compression='gzip', index=False, sep='\t')
-    return (sumDat.loc[Idx==True])
+    if np.sum(Idx==True) <= (sumDat.shape[0]*0.2):
+        logger.info('More than 80% of data does not have Freq, deleted column')
+        sumDat.loc[:, freqCol] = None
+        return (sumDat)
+    else:
+        tmpD = sumDat.loc[Idx==False,:]
+        tmpD.to_csv(outfile, na_rep='NA',compression='gzip',
+                index=False, sep='\t')
+        return (sumDat.loc[Idx==True,:])
 
-def basic_QC_Freq2(sumDat, outdir, freqACol, freqUCol, freqTh=0.8, logger=None):
+def basic_QC_Freq2(sumDat, outdir, freqACol, freqUCol, freqTh=0.8, 
+        NcasCol='', NconCol='', pCol='P', logger=None):
     '''
     Perform qc based on effective allele frequence in Cases and controls.
 
@@ -454,6 +450,8 @@ def basic_QC_Freq2(sumDat, outdir, freqACol, freqUCol, freqTh=0.8, logger=None):
     freqACol,   Field name of frequence of effective allele in cases
     freqUCol,   Field name of frequence of effective allele in controls
     freqTh,     Threshold of frequency of effective allele
+    NcasCol,    The column name of the number of cases
+    NcasCol,    The column name of the number of controls
     logger,     object logging to log progress (None)
     
     Return:
@@ -462,6 +460,7 @@ def basic_QC_Freq2(sumDat, outdir, freqACol, freqUCol, freqTh=0.8, logger=None):
     -----
     Remove SNPs with frequence of effective allele < freqTh in cases and
     conrtols 
+    Give up QC when 80% of the data failed QC
 
     TO-DO:
     ------
@@ -469,26 +468,93 @@ def basic_QC_Freq2(sumDat, outdir, freqACol, freqUCol, freqTh=0.8, logger=None):
 
     '''
     if freqACol not in sumDat.columns:
-        raise (ValueError('{} not in the data frame.'.format(freqACol)))
+        raise (ValueError, '{} not in the data frame.'.format(freqACol))
     if freqUCol not in sumDat.columns:
-        raise (ValueError('{} not in the data frame.'.format(freqUCol)))
-    IdxA = ((sumDat.loc[:, freqACol] >= freqTh) & 
-             (sumDat.loc[:, freqACol] <= (1-freqTh)))
-    IdxU = ((sumDat.loc[:, freqUCol] >= freqTh) & 
-            (sumDat.loc[:, freqUCol] <= (1-freqTh)))
-    Idx = (IdxA & IdxU)
+        raise (ValueError, '{} not in the data frame.'.format(freqUCol))
+    if pCol not in sumDat.columns:
+        raise (ValueError, '{} not in the data frame.'.format(pCol))
     if not logger:
         logger = logging.getLogger()
         logger.addHandler(logging.StreamHandler())
+    if NcasCol and NconCol:
+        freq = np.true_divide(sumDat.loc[:,NcasCol] * sumDat.loc[:,
+            freqACol] + sumDat.loc[:, NconCol] * sumDat.loc[:,freqUCol], 
+                    sumDat.loc[:, NcasCol]  + sumDat.loc[:, NconCol]) 
+    else:
+        freq = sumDat.loc[:, freqUCol].values
+    Idx = ((freq >= freqTh) & (freq <= (1-freqTh))).values
+    tmpdf = pd.DataFrame({'H':2*(freq)*(1-freq), 
+        '-log10P':-np.log10(sumDat.loc[:,pCol])})
+    tag = np.empty((sumDat.shape[0],), dtype='|S10'); tag.fill('Clean')
+    tag[Idx==False] = 'Removed'
+    tmpdf.loc[:, 'Tag'] = tag
+    logger.info('Filter out SNPs with allele frequences A&U:\n------------')
+    logger.info ('{} SNPs with frequences in A < {}'.format(
+        np.sum(Idx==False), freqTh))
     outfile = os.path.join(outdir, 'MAF_filtered_SNPs_AU.txt.gz')
-    logger.info ('Filter out SNPs with allele frequences A&U:\n-----------------')
-    logger.info ('{} SNPs with frequences in A < {}'.format(np.sum(IdxA==False), freqTh))
-    logger.info ('{} SNPs with frequences in U < {}'.format(np.sum(IdxU==False), freqTh))
     logger.info ('\n save removed  SNPs to "{}"'.format(outfile))
     logger.info('\n-------------------------------------------')
-    tmpD = sumDat.loc[Idx==False,:]
+    if np.sum(Idx==True) < (sumDat.shape[0]* 0.2):
+        logger.info('More than 80% of data failed QC freq, deleted Column')
+        g = sns.FacetGrid(data=tmpdf, col='Tag', sharex=False, sharey=False)
+        g.map(plt.scatter, "H", "-log10P")
+        g.savefig(os.path.join(outdir, 'Maf_filter_SNPs_AU.png'), 
+                width=10, height=10)
+        return (sumDat)
+    else:
+        g1 = sns.FacetGrid(tmpdf, col='Tag', sharex=False, sharey=False)
+        g1.map(plt.scatter, "H", "-log10P")
+        g1.savefig(os.path.join(outdir, 'Maf_filter_SNPs_AU.png'))
+        g2 = sns.FacetGrid(tmpdf, col='Tag', sharex=False, sharey=False)
+        g2.map(plt.hist, "H")
+        g2.savefig(os.path.join(outdir, 'Maf_filter_SNPs_AU_hist.png'), 
+                width=10, height=10)
+        tmpD = sumDat.loc[Idx==False,:]
+        tmpD.to_csv(outfile, na_rep='NA',compression='gzip',
+                index=False,sep='\t')
+        return(sumDat.loc[Idx==True,:])
+
+def basic_QC_SNP_only(sumDat, outdir, snpCol='SNP', effACol='A1', 
+        othACol='A2', logger=None):
+    '''
+    Perform qc on selecting SNP only  .
+
+    Input:
+    -----
+    sumDat,     Summary statistics DataFrame
+    outdir,     Directory of saving intermediate result
+    snpCol,     SNP ID field name 
+    effACol,    effective Allele column
+    othACol,    the other Allele column
+    logger,     object logging to log progress (None)
+    
+    Return:
+    ------
+    Note:
+    -----
+    Remove Incertion & deletions, CNV
+    Assuming SNPs are all with rs number
+    '''
+
+    rsIdx = sumDat.loc[:, snpCol].str.match('rs', case=False).values
+    A1IIdx = sumDat.loc[:, effACol].str.match('I', case=False).values
+    A1DIdx = sumDat.loc[:, effACol].str.match('D', case=False).values
+    validIdx = (rsIdx==True) & (A1IIdx==False) & (A1DIdx==False)
+    if othACol in sumDat.columns:
+        A2IIdx = sumDat.loc[:, othACol].str.match('I', case=False)
+        A2DIdx = sumDat.loc[:, othACol].str.match('D', case=False)
+        validIdx = (validIdx==True) & (A2IIdx==False) & (A2DIdx == False)
+    if not logger:
+        logger = logging.getLogger()
+        logger.addHandler(logging.StreamHandler())
+    outfile = os.path.join(outdir, 'None_SNP.txt.gz')
+    logger.info ('Filter out none SNPs with :\n-----------------')
+    logger.info ('{} none SNPs variants'.format(np.sum(validIdx==False)))
+    logger.info ('\n save none SNPs to "{}"'.format(outfile))
+    logger.info('\n-------------------------------------------')
+    tmpD = sumDat.loc[validIdx==False,:]
     tmpD.to_csv(outfile, na_rep='NA', compression='gzip', index=False, sep='\t')
-    return(sumDat.loc[Idx==True])
+    return (sumDat.loc[validIdx==True,:])
 
 def basic_QC_direct(sumDat, outdir, dirCol='DIR', dirMth=1, dirDth=.5, 
         dirPos='+', dirNeg='-', dirMis='?', logger=None):
@@ -520,208 +586,180 @@ def basic_QC_direct(sumDat, outdir, dirCol='DIR', dirMth=1, dirDth=.5,
 
     '''
     if dirCol not in sumDat.columns:
-        raise (ValueError('{} not in the data frame.'.format(dirCol)))
+        raise (ValueError, '{} not in the data frame.'.format(dirCol))
+    nstudy = sumDat.loc[:,dirCol].str.len()
+    if nstudy.values[0] <= 6:
+        logger.info ('< 6 substudies, skip filter on direction\n')
+        return sumDat
     plus = sumDat.loc[:,dirCol].str.count('\\'+dirPos)
     minus = sumDat.loc[:,dirCol].str.count('\\'+dirNeg)
     miss = sumDat.loc[:,dirCol].str.count('\\'+dirMis)
-    nstudy = sumDat.loc[:,dirCol].str.len()
     disRate = np.true_divide(np.min([plus, minus], axis=0), nstudy)
     misRate = np.true_divide(miss, nstudy)
-    Idx = ((misRate <= dirMth) & (disRate <= dirDth))
+    # be consistent with Ricopili, only consider missing rates
+    #Idx = ((misRate <= dirMth) & (disRate <= dirDth))
+    Idx = misRate <= dirMth
     if not logger:
         logger = logging.getLogger()
         logger.addHandler(logging.StreamHandler())
     outfile = os.path.join(outdir, 'Invalid_direction_SNPs.txt.gz')
-    logger.info ('Filter out SNPs with inconsistent direction:\n-----------------')
-    logger.info ('{} SNPs with inconsistent direction'.format(np.sum(Idx==False)))
+    logger.info ('Filter out SNPs with inconsistent direction:\n------------')
+    logger.info ('{} SNPs with inconsistent direction'.format(
+        np.sum(Idx==False)))
     logger.info ('\n save invalid SNPs to "{}"'.format(outfile))
     logger.info('\n-------------------------------------------')
     tmpD = sumDat.loc[Idx==False,:]
     tmpD.to_csv(outfile, na_rep='NA', compression='gzip', index=False, sep='\t')
-    return (sumDat.loc[Idx==True])
+    return (sumDat.loc[Idx==True,:])
 
-def print_header(fh, lines=5):
-    (openfunc, compression) = get_compression(fh)
-    with openfunc(fh) as f:
-        for line in islice(f, lines):
-            line = line if isinstance(line, string_types) else line.decode('utf-8') 
-            print(line.rstrip('\n'))
+def QC_P_Eff(sumDat, outdir, pCol, effCol=None, seCol=None, NCol=None,
+        NcasCol=None, NconCol=None, ORCol=None,
+        thresh=np.finfo(float), logger=None):
+    '''
+    Perform qc on the consistency between P and Zscore.
 
-def read_header(fh):
-    '''Read the first line of a file and returns a list with the column names.'''
-    (openfunc, compression) = get_compression(fh)
-    firstline = openfunc(fh).readline()
-    if not isinstance(firstline, string_types):
-        firstline = firstline.decode('utf-8')
-    return [x.rstrip('\n') for x in firstline.split()]
+    Input:
+    -----
+    sumDat,     Summary statistics DataFrame
+    outdir,     Directory of saving intermediate result
+    effCol,     Column name of effect
+    seCol,      Column name of SE
+    NCol,       Column name of Sample size
+    NcasCol,    Column name of number of cases
+    NconCol,    Column name of number of control
+    ORCol,      Column name of odds ratio
+    thresh,     Threshold of distinguish difference of two floating number
+    logger,     object logging to log progress (None)
+    
+    Return:
+    ------
+    Note:
+    -----
+    Remove SNPs having inconsistent effect vs. p
+    Check difference between -log10 P and -log10 P(from effect size).
+    If se not availbel, sqrt(N) or sqrt(effN) used
+    difference of abs(-log10P - (-log10(Peff))) > 1.0, considered as
+        inconsistent
 
-def get_cname_map(flag, default, ignore):
-    '''
-    Figure out which column names to use.
-    Priority is
-    (1) ignore everything in ignore
-    (2) use everything in flags that is not in ignore
-    (3) use everything in default that is not in ignore or in flags
-    The keys of flag are cleaned. The entries of ignore are not cleaned. The keys of defualt
-    are cleaned. But all equality is modulo clean_header().
-    '''
-    clean_ignore = [clean_header(x) for x in ignore]
-    cname_map = {x: flag[x] for x in flag if x not in clean_ignore}
-    cname_map.update(
-        {x: default[x] for x in default if x not in clean_ignore + list(flag)})
-    return cname_map
+    Author: Yunpeng Wang, yunpeng.wng@gmail.com
 
-def get_compression(fh):
     '''
-    Read filename suffixes and figure out whether it is gzipped,bzip2'ed or not compressed
-    '''
-    if fh.endswith('gz'):
-        compression = 'gzip'
-        openfunc = gzip.open
-    elif fh.endswith('bz2'):
-        compression = 'bz2'
-        openfunc = bz2.BZ2File
+    if seCol:
+        sevec = sumDat.loc[:, seCol].values
     else:
-        openfunc = open
-        compression = None
-
-    return openfunc, compression
-
-def clean_header(header):
-    '''
-    For cleaning file headers.
-    - convert to uppercase
-    - replace dashes '-' with underscores '_'
-    - replace dots '.' (as in R) with underscores '_'
-    - remove newlines ('\n')
-    '''
-    return header.upper().replace('-', '_').replace('.', '_').replace('\n', '')
-
-def parse_flag_cnames(cname_options, signed_sumstats):
-    '''
-    Parse flags that specify how to interpret nonstandard column names.
-    flag_cnames is a dict that maps (cleaned) arguments to internal column names
-    '''
-    flag_cnames = {clean_header(x[0]): x[1]
-                   for x in cname_options if x[0] is not None}
-    null_value = None
-    if signed_sumstats is not None:
-        try:
-            cname, null_value = signed_sumstats.split(',')
-            null_value = float(null_value)
-            flag_cnames[clean_header(cname)] = 'SIGNED_SUMSTAT'
-        except ValueError:
-            #log.log('The argument to --signed-sumstats should be column header comma number.')
-            raise
-
-    return [flag_cnames, null_value]
-
-def make_metal_script(files, out='meta'):
-    with open('metal_script.txt', 'w') as f:
-        f.write('SCHEME STDERR\n')
-        f.write('SEPARATOR WHITESPACE\n')
-
-        for file in files:
-            cname_translation = find_column_name_translation(sumstats=file)
-            cname_description = {x: describe_cname[cname_translation[x]] for x in cname_translation if cname_translation[x] != 'UNKNOWN'}
-            print('Interpreting column names from {0} as follows:'.format(file))
-            print('\n'.join([x + ':\t' + cname_description[x] for x in cname_description]) + '\n')
-            cname_skip = [x for x in cname_translation if cname_translation[x ] == 'UNKNOWN']
-            if cname_skip: print('Skip the remaining columns ({}).'.format(', '.join(cname_skip)))
-            cname = {v: k for k, v in iteritems(cname_translation)}
-
-            se = cname.get('SE', 'UNKNOWN_COLUMN')
-            pvalue = cname.get('P', 'UNKNOWN_COLUMN')
-            snp = cname.get('SNP', 'UNKNOWN_COLUMN')
-            A1 = cname.get('A1', 'UNKNOWN_COLUMN')
-            A2 = cname.get('A2', 'UNKNOWN_COLUMN')
-            effect = 'UNKNOWN_COLUMN'
-            if 'BETA' in cname: effect = cname['BETA']
-            elif 'LOG_ODDS' in cname: effect = cname['LOG_ODDS']
-            elif 'OR' in cname: effect = 'log({0})'.format(cname['OR'])
-            if effect == 'UNKNOWN_COLUMN': print('WARNING: Effect size column not detected in {0}'.format(file))
-            if snp == 'UNKNOWN_COLUMN': print('WARNING: SNP column not detected in {0}'.format(file))
-            if A1 == 'UNKNOWN_COLUMN' or A2 == 'UNKNOWN_COLUMN': print('WARNING: A1/A2 columns not detected in {0}'.format(file))
-            if se == 'UNKNOWN_COLUMN': print('WARNING: SE column not detected in {0}'.format(file))
-            if pvalue == 'UNKNOWN_COLUMN': print('WARNING: P value column not detected in {0}'.format(file))
-
-            f.write('MARKER {0}\n'.format(snp))
-            f.write('ALLELE {0} {1}\n'.format(A1, A2))
-            f.write('EFFECT {0}\n'.format(effect))
-            f.write('STDERR {0}\n'.format(se))
-            f.write('PVALUE {0}\n'.format(pvalue))
-            f.write('PROCESS {0}\n'.format(file))
-
-        f.write('OUTFILE {0} .tbl\n'.format(out))
-        f.write('ANALYZE\n')
-        f.write('QUIT')
-    print('Done. Now you should run "metal script metal_script.txt"')
-
-def find_column_name_translation(sumstats, snp=None, chromosome=None, pos=None,
-                                 a1=None, a2=None, a1_inc=None, p=None,
-                                 frq=None, info=None,
-                                 signed_sumstats=None, odds_ratio=None, beta=None,
-                                 ignore=None, daner=False,
-                                 nstudy=None, N_col=None, N_cas_col=None, N_con_col=None):
-    '''
-    Detects naming of column in summary stats file.
-    Returns a dictionary where key corresponds to column name from summary stat file, and
-    value is one of the following:
-    SNP, CHR, POS, P, A1, A2, N, N_CAS, N_CON, Z, OR, BETA, LOG_ODDS, INFO, FRQ, SIGNED_SUMSTAT, or NSTUDY.
-    Corresponding parameters of this function allow to provide a custom name that could not be detected automaticaly.
-    The code is largely copied from https://github.com/bulik/ldsc/blob/master/munge_sumstats.py
-    '''
-    cname_options = [
-        [nstudy, 'NSTUDY', '--nstudy'],
-        [snp, 'SNP', '--snp'],
-        [chromosome, 'CHR', '--chr'],
-        [odds_ratio, 'OR', '--or'],
-        [beta, 'BETA', '--beta'],
-        [pos, 'POS', '--pos'],
-        [N_col, 'N', '--N'],
-        [N_cas_col, 'N_CAS', '--N-cas-col'],
-        [N_con_col, 'N_CON', '--N-con-col'],
-        [a1, 'A1', '--a1'],
-        [a2, 'A2', '--a2'],
-        [p, 'P', '--P'],
-        [frq, 'FRQ', '--nstudy'],
-        [info, 'INFO', '--info']
-    ]
-
-    file_cnames = read_header(sumstats)  # note keys not cleaned
-    flag_cnames, signed_sumstat_null = parse_flag_cnames(cname_options, signed_sumstats)
-    if ignore:
-        ignore_cnames = [clean_header(x) for x in ignore.split(',')]
+        if NCol:
+            sevec = np.sqrt(sumDat.loc[:, NCol].values)
+        elif NcasCol and NconCol:
+            effN = 2.0 / ((1.0/sumDat.loc[:, NcasCol].values) +
+                    (1.0/sumDat.loc[:,NconCol].values))
+            sevec = np.sqrt(effN)
+        else:
+            sevec = np.ones((sumDat.shape[0],))
+    if effCol:
+        effvec = sumDat.loc[:, effCol].values
+    elif ORCol:
+        effvec = np.log(sumDat.loc[:, ORCol].values)
+    tmpP = 2*stats.norm.cdf(-np.abs(effvec/sevec))
+    valIdx = np.abs(-np.log10(tmpP) - 
+            (-np.log10(sumDat.loc[:, pCol].values))) <= thresh
+    tag = np.empty((sumDat.shape[0],), dtype='|S10'); tag.fill('Clean')
+    tag[valIdx==False] = 'Removed'
+    tmpdf = pd.DataFrame({'P':sumDat.loc[:, pCol],'Peff':tmpP, 
+        'Tag':tag})
+    g = sns.FacetGrid(tmpdf, col='Tag', sharex=False, sharey=False)
+    g.map(plt.scatter, "P", "Peff")
+    g.savefig(os.path.join(outdir, 'Inconsisten_PorZ_SNP.png'))
+    if not logger:
+        logger = logging.getLogger()
+        logger.addHandler(logging.StreamHandler())
+    if np.sum(valIdx==True) < (0.2 * sumDat.shape[0]):
+        logger.error('More that 80% data fails QC Eff')
+        raise ('Most SNPs failed PvsEff QC')
     else:
-        ignore_cnames = []
+        outfile = os.path.join(outdir, 'Inconsisten_PorZ_SNP.txt.gz')
+        logger.info ('Filter out SNPs with inconsistent p/z :\n-----------')
+        logger.info ('{} SNPs invalid p/z'.format(np.sum(valIdx==False)))
+        logger.info ('\n save SNPs with inconsistent P/Z to "{}"'.format(
+            outfile))
+        logger.info('\n-------------------------------------------')
+        tmpD = sumDat.loc[valIdx==False,:]
+        tmpD.to_csv(outfile, na_rep='NA', compression='gzip', 
+                index=False, sep='\t')
+        return (sumDat.loc[valIdx==True,:])
+    
+def basic_QC_ambiA(sumDat, outdir, effACol='A1', othACol='A2', logger=None):
+    '''
+    Perform qc on selecting SNP only  .
 
-    # remove LOG_ODDS, BETA, Z, OR from the default list
-    if signed_sumstats is not None or a1_inc:
-        mod_default_cnames = {x: default_cnames[x] for x in default_cnames if default_cnames[x] not in null_values}
-    else:
-        mod_default_cnames = default_cnames
+    Input:
+    -----
+    sumDat,     Summary statistics DataFrame
+    outdir,     Directory of saving intermediate result
+    effACol,    effective Allele column
+    othACol,    the other Allele column
+    logger,     object logging to log progress (None)
+    
+    Return:
+    ------
+    Note:
+    -----
+    Remove SNPs having ambiguouse allele coding AT, CG
+    Assuming SNPs are all with rs number
+    '''
 
-    cname_map = get_cname_map(flag_cnames, mod_default_cnames, ignore_cnames)
+    A1AIdx = sumDat.loc[:, effACol].str.match('A', case=False)
+    A1GIdx = sumDat.loc[:, effACol].str.match('G', case=False)
+    A1CIdx = sumDat.loc[:, effACol].str.match('C', case=False)
+    A1TIdx = sumDat.loc[:, effACol].str.match('T', case=False)
 
-    if daner:
-        frq_u = next(iter(filter(lambda x: x.startswith('FRQ_U_'), file_cnames)))
-        frq_a = next(iter(filter(lambda x: x.startswith('FRQ_A_'), file_cnames)))
-        N_cas = float(frq_a[6:])
-        N_con = float(frq_u[6:])
-        #log.log('Inferred that N_cas = {N1}, N_con = {N2} from the FRQ_[A/U] columns.'.format(N1=N_cas, N2=N_con))
+    A2AIdx = sumDat.loc[:, othACol].str.match('A', case=False)
+    A2GIdx = sumDat.loc[:, othACol].str.match('G', case=False)
+    A2CIdx = sumDat.loc[:, othACol].str.match('C', case=False)
+    A2TIdx = sumDat.loc[:, othACol].str.match('T', case=False)
 
-        # drop any N, N_cas, N_con or FRQ columns
-        for c in ['N', 'N_CAS', 'N_CON', 'FRQ']:
-            for d in [x for x in cname_map if cname_map[x] == 'c']:
-                del cname_map[d]
+    ambiIdx = (A1AIdx==True) & (A2TIdx==True)
+    ambiIdx = (ambiIdx==True ) | ((A1TIdx==True) & (A2AIdx==True))
+    ambiIdx = (ambiIdx==True ) | ((A1CIdx==True) & (A2GIdx==True))
+    ambiIdx = (ambiIdx==True ) | ((A1GIdx==True) & (A2CIdx==True))
+    ambiIdx = ambiIdx.values
+    if not logger:
+        logger = logging.getLogger()
+        logger.addHandler(logging.StreamHandler())
+    outfile = os.path.join(outdir, 'Ambiguous_allele_SNP.txt.gz')
+    logger.info ('Filter out SNPs with ambiguous allele coding:\n-----------')
+    logger.info ('{} SNPs with AT/TA/CG/GC'.format(np.sum(ambiIdx==True)))
+    logger.info ('\n save ambiguous SNPs to "{}"'.format(outfile))
+    logger.info('\n-------------------------------------------')
+    tmpD = sumDat.loc[ambiIdx==True,:]
+    tmpD.to_csv(outfile, na_rep='NA', compression='gzip', index=False, sep='\t')
+    return (sumDat.loc[ambiIdx==False,:])
 
-        cname_map[frq_u] = 'FRQ'
+def deduplicate_bycol(dat,  keys):
+    '''
+    Remove duplicated rows in give data.
 
-    cname_translation = {x: cname_map.get(clean_header(x), 'UNKNOWN') for x in file_cnames}  # note keys not cleaned
+    Input:
+    ------
+    dat,        DataFrame 
+    keys,       List of column names used to find duplicated rows
 
-    # In the original version the code here performed the following validation
-    # 1. One and only one signed sumstat column is found (unless a1_inc is not None)
-    # 2. 'SNP' and 'P' columns are present in the data
-    # 3. Alleles 'A1' and 'A2' are present
+    Return:
+    ------
+    cleanDat,   DataFrame without duplicated rows.
+    dupDat,     DataFrame with only duplicated rows.
 
-    return cname_translation
+    Note:
+        Keep the first.
+
+
+    '''
+    if type(keys) == str:
+        keys = [keys]
+    for k in keys:
+        if k not in dat.columns:
+            raise ValueError, '%s not in columns names' % (k,)
+    dupIdx = dat.duplicated(subset=keys)
+    cleanDat = dat.loc[dupIdx==False,:]
+    dupDat = dat.loc[dupIdx,:]
+    return cleanDat, dupDat
+
