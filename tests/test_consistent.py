@@ -26,6 +26,8 @@ def run(filename):
     shutil.rmtree('TEMP_FOLDER')
 
 def test01(): run('tests/case01.txt')
+def test01gz(): run('tests/case01.txt.gz')
 #def test02(): run('tests/case02.txt')
 #def test03(): run('tests/case03.txt')
 def test04(): run('tests/case04.txt')
+def test04gz(): run('tests/case04.txt.gz')

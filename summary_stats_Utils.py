@@ -1,7 +1,8 @@
 import sys, os, re, logging, datetime
 import numpy as np
 import pandas as pd
-from six import iteritems
+import gzip
+from six import iteritems, string_types
 from pkg_resources import parse_version
 
 pdlow = parse_version(pd.__version__) < parse_version('0.17.0')
@@ -541,7 +542,10 @@ def basic_QC_direct(sumDat, outdir, dirCol='DIR', dirMth=1, dirDth=.5,
 def read_header(fh):
     '''Read the first line of a file and returns a list with the column names.'''
     (openfunc, compression) = get_compression(fh)
-    return [x.rstrip('\n') for x in openfunc(fh).readline().split()]
+    firstline = openfunc(fh).readline()
+    if not isinstance(firstline, string_types):
+        firstline = firstline.decode('utf-8')
+    return [x.rstrip('\n') for x in firstline.split()]
 
 def get_cname_map(flag, default, ignore):
     '''
