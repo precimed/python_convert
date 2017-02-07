@@ -50,6 +50,8 @@ def parse_args(args):
         help="Second allele column in reference file.")
     parser_csv.add_argument("--chunksize", default=100000, type=int,
         help="Size of chunck to read the file.")
+    parser_csv.add_argument("--force", action="store_true",
+        default=False, help="Force overwrite target files if they exist.")
     parser_csv.set_defaults(func=make_csv)
 
     parser_mat = subparsers.add_parser("mat", help="Create mat files that can "
@@ -70,6 +72,7 @@ def parse_args(args):
         help="Run test.")
     parser_mat.set_defaults(func=run_test)
 
+
     return parser.parse_args(args)
 
 
@@ -79,7 +82,7 @@ def make_csv(args):
     Only SNPs from the rederence file are considered. Zscores of ambiguous SNPs
     are set to NA.
     """
-    if os.path.isfile(args.output_file):
+    if os.path.isfile(args.output_file) and not args.force:
         raise ValueError("Output file already exists!")
 
     cname_translation = find_column_name_translation(args.sumstats_file,
