@@ -185,9 +185,14 @@ def make_csv(args):
                     print("\t{o} : {d} ({e})".format(o=original, d=cname, e="Will be deleted" if not cname else describe_cname[cname]))
                 if not cname_map: raise(ValueError('Arguments imply to delete all columns from the input file. Did you forget --auto flag?'))
 
+            chunk.drop([x for x in chunk.columns if x not in cname_map], axis=1, inplace=True)
+            chunk.rename(columns=cname_map, inplace=True)
 
-            chunk = chunk[list(cname_map.keys())]
-            chunk.columns = list(cname_map.values())
+            # Split CHR:POS column into two
+            if cols.CHRPOS in chunk.columns:
+                chunk[cols.CHR], chunk[cols.POS] = chunk[cols.CHRPOS].str.split(':', 1).str
+                del chunk[cols.CHRPOS]
+
             chunk = chunk.sort_index(axis=1)
             chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA', compression=args.compression)
             n_snps += len(chunk)
@@ -262,7 +267,7 @@ def make_mat(args):
         print('Reading summary statistics file {}...'.format(csv_f))
         reader = pd.read_table(csv_f, sep='\t', usecols=[cols.A1, cols.A2, cols.SNP, cols.PVAL, args.effect],
                                chunksize=args.chunksize, dtype={args.effect:effect_col_dtype})
-        df_out = []
+        df_out = None
         for i, chunk in enumerate(reader):
             chunk = chunk.loc[chunk[cols.SNP].isin(ref_dict),:]
             if chunk.empty: continue
@@ -301,13 +306,12 @@ def make_mat(args):
             zvect[ind_ambiguous] = np.nan
             #TODO: check whether output df contains duplicated rs-ids (warn)
             df = pd.DataFrame({"pvalue": log10pv, "zscore":zvect}, index=chunk[cols.SNP])
-            if not df_out: df_out = df
-            else: df_out.append(df)
-            print("{n} lines processed".format(n=(i+1)*args.chunksize))
-
-        print("{n} SNPs from {f} matched with reference file".format(n=len(df_out), f=csv_f))
+            if df_out is None: df_out = df
+            else: df_out = df_out.append(df)
+            print("{n} lines processed, {m} SNPs matched with reference file".format(n=(i+1)*args.chunksize, m=len(df_out)))
         if df_out.empty: raise(ValueError("No SNPs match after joining with reference data"))
 
+        print('Writing .mat file...')
         df_ref_aligned = pd.DataFrame(columns=["pvalue", "zscore"], index=ref_snps)
         df_ref_aligned["pvalue"] = df_out["pvalue"]
         df_ref_aligned["zscore"] = df_out["zscore"]

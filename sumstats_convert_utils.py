@@ -6,8 +6,8 @@ import six
 import itertools
 from collections import namedtuple
 
-Cols = namedtuple('Cols', ['SNP', 'CHR', 'POS', 'PVAL', 'A1', 'A2', 'N', 'NCAS', 'NCON', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY'])
-cols = Cols._make(        ['SNP', 'CHR', 'POS', 'PVAL', 'A1', 'A2', 'N', 'NCAS', 'NCON', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY'])
+Cols = namedtuple('Cols', ['SNP', 'CHR', 'POS', 'PVAL', 'A1', 'A2', 'N', 'NCAS', 'NCON', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS'])
+cols = Cols._make(        ['SNP', 'CHR', 'POS', 'PVAL', 'A1', 'A2', 'N', 'NCAS', 'NCON', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS'])
 
 null_values = {
     cols.LOGODDS: 0,
@@ -119,7 +119,8 @@ describe_cname = {
     cols.FRQ: 'Allele frequency',
     'SIGNED_SUMSTAT': 'Directional summary statistic as specified by --signed-sumstats.',
     cols.NSTUDY: 'Number of studies in which the SNP was genotyped.',
-    'UNKNOWN': 'Unknown column type (will be skipped).'
+    'UNKNOWN': 'Unknown column type (will be skipped).',
+    cols.CHRPOS: 'chr:pos column with colon-separated information about Chromosome and Base-pair position',
 }
 
 def clean_header(header):
