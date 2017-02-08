@@ -12,6 +12,7 @@ import argparse
 import six
 from sumstats_convert_utils import *
 import collections
+from shutil import copyfile
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description="Convert summary statistics "
@@ -29,7 +30,7 @@ def parse_args(args):
     parser_csv.add_argument("--auto", action="store_true", default=False,
         help="Auto-detect column types based on a set of standard column names.")
     parser_csv.add_argument("--chunksize", default=100000, type=int,
-        help="Size of chunck to read the file.")
+        help="Size of chunk to read the file.")
     parser_csv.add_argument("--force", action="store_true", default=False,
         help="Force overwrite target files if they exist.")
     parser_csv.add_argument("--head", default=0, type=int,
@@ -55,10 +56,22 @@ def parse_args(args):
     parser_mat.add_argument("--effect", default='BETA', type=str, choices=['BETA', 'OR', 'Z', 'LOGODDS'],
         help="Effect column.")
     parser_mat.add_argument("--chunksize", default=100000, type=int,
-        help="Size of chunck to read the file.")
+        help="Size of chunk to read the file.")
     parser_mat.add_argument("--force", action="store_true", default=False,
         help="Force overwrite target files if they exist.") 
     parser_mat.set_defaults(func=make_mat)
+
+    parser_rs = subparsers.add_parser("rs", help="Augument summary statistic file with SNP RS number from reference file. "
+        "Merging is done on chromosome and position. The output is written back into the original file. ")
+    parser_rs.add_argument("ref_file", type=str,
+        help="Tab-separated file with list of referense SNPs.")
+    parser_rs.add_argument("csv_files", type=str, nargs='+',
+        help="Tab-sepatated csv files.")
+    parser_rs.add_argument("--chunksize", default=100000, type=int,
+        help="Size of chunk to read the file.")
+    parser_rs.add_argument("--compression", default=None, type=str, choices=['gzip', 'bz2', 'xz'],
+        help="Compression to use for the output file")
+    parser_rs.set_defaults(func=make_rs)
 
     return parser.parse_args(args)
 
@@ -184,8 +197,8 @@ def make_csv(args):
 
             # Split CHR:POS column into two
             if cols.CHRPOS in chunk.columns:
-                chunk[cols.CHR], chunk[cols.POS] = chunk[cols.CHRPOS].str.split(':', 1).str
-                del chunk[cols.CHRPOS]
+                chunk[cols.CHR], chunk[cols.BP] = chunk[cols.CHRPOS].str.split(':', 1).str
+                chunk.drop(cols.CHRPOS, axis=1, inplace=True)
 
             chunk = chunk.sort_index(axis=1)
             chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA', compression=args.compression)
@@ -313,6 +326,43 @@ def make_mat(args):
         sio.savemat(mat_f, save_dict, format='5', do_compression=False,
             oned_as='column', appendmat=False)
         print("%s created" % mat_f)
+
+### =================================================================================
+###                          Implementation for parser_rs
+### =================================================================================
+def make_rs(args):
+    """
+    Augument summary statistic file with SNP RS number from reference file.
+    Merging is done on chromosome and position.
+    The output is written back into the original file.
+    """
+    check_input_file(args.ref_file)
+    for csv_f in args.csv_files:
+        check_input_file(csv_f)
+        check_output_file(csv_f + '.tmp', force=True)
+        check_output_file(csv_f + '.tmp2', force=True)
+
+    print('Reading reference file {}...'.format(args.ref_file))
+    ref_file = pd.read_table(args.ref_file, sep='\t', usecols=[cols.SNP, cols.CHR, cols.BP])
+    print("Reference dict contains {d} snps.".format(d=len(ref_file)))
+
+    for csv_f in args.csv_files:
+        print('Reading summary statistics file {}...'.format(csv_f))
+        copyfile(csv_f, csv_f + ".tmp2")  # don't open the original file (otherwise it might be hard to remove it afterwards)
+        reader = pd.read_table(csv_f + ".tmp2", sep='\t', chunksize=args.chunksize)
+        n_snps = 0
+        with open(csv_f + '.tmp', 'a') as out_f:
+            for chunk_index, chunk in enumerate(reader):
+                if cols.SNP in chunk: chunk.drop(cols.SNP, axis=1, inplace=True)
+                chunk = pd.merge(chunk, ref_file, how='left', on=[cols.CHR, cols.BP])
+                chunk = chunk.sort_index(axis=1)
+                chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA', compression=args.compression)
+                n_snps += len(chunk)
+                print("{n} lines processed".format(n=(chunk_index+1)*args.chunksize))
+        os.remove(csv_f)
+        os.rename(csv_f + '.tmp', csv_f)
+        check_output_file(csv_f + '.tmp2', force=True)  # try remove, ignore if fails
+        print("{n} SNPs saved to {f}".format(n=n_snps, f=csv_f))
 
 ### =================================================================================
 ###                                Main section
