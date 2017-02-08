@@ -52,12 +52,6 @@ def parse_args(args):
         help="Output mat files.")
     parser_mat.add_argument("--traits", type=str, nargs='+', default=None,
         help="Trait names that will be used in mat files.")
-    parser_mat.add_argument("--ref-id", default="SNP", type=str,
-        help="Id column in reference file.")
-    parser_mat.add_argument("--ref-a1", default="A1", type=str,
-        help="First allele column in reference file.")
-    parser_mat.add_argument("--ref-a2", default="A2", type=str,
-        help="Second allele column in reference file.")
     parser_mat.add_argument("--effect", default='BETA', type=str, choices=['BETA', 'OR', 'Z', 'LOGODDS'],
         help="Effect column.")
     parser_mat.add_argument("--chunksize", default=100000, type=int,
@@ -249,17 +243,17 @@ def make_mat(args):
     effect_col_dtype = str if signed_effect else np.float
 
     print('Reading reference file {}...'.format(args.ref_file))
-    usecols = [args.ref_id, args.ref_a1, args.ref_a2]
+    usecols = [cols.SNP, cols.A1, cols.A2]
     reader = pd.read_table(args.ref_file, sep='\t', usecols=usecols,
         chunksize=args.chunksize)
     ref_dict = {}
     for chunk in reader:
-        gtypes = (chunk[args.ref_a1] + chunk[args.ref_a2]).apply(str.upper)
+        gtypes = (chunk[cols.A1] + chunk[cols.A2]).apply(str.upper)
         #TODO?: add check whether some id is already in ref_dict
-        ref_dict.update(dict(zip(chunk[args.ref_id], gtypes)))
+        ref_dict.update(dict(zip(chunk[cols.SNP], gtypes)))
     ref_dict = {i: (aa, COMPLEMENT[aa], aa[::-1], COMPLEMENT[aa[::-1]])
             for i, aa in ref_dict.items()}
-    ref_snps = pd.read_table(args.ref_file, sep='\t', usecols=[args.ref_id], squeeze=True)
+    ref_snps = pd.read_table(args.ref_file, sep='\t', usecols=[cols.SNP], squeeze=True)
     #TODO?: add check whether ref_snps contains duplicates
     print("Reference dict contains {d} snps.".format(d=len(ref_dict)))
 

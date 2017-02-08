@@ -6,8 +6,8 @@ import six
 import itertools
 from collections import namedtuple
 
-Cols = namedtuple('Cols', ['SNP', 'CHR', 'POS', 'PVAL', 'A1', 'A2', 'N', 'NCAS', 'NCON', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS'])
-cols = Cols._make(        ['SNP', 'CHR', 'POS', 'PVAL', 'A1', 'A2', 'N', 'NCAS', 'NCON', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS'])
+Cols = namedtuple('Cols', ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'N', 'NCAS', 'NCON', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS'])
+cols = Cols._make(        ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'N', 'NCAS', 'NCON', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS'])
 
 null_values = {
     cols.LOGODDS: 0,
@@ -30,9 +30,9 @@ default_cnames = {
     'CHR': cols.CHR,
     'CHROMOSOME' : cols.CHR,
     # POSITION
-    'POS': cols.POS,
-    'BP': cols.POS,
-    'POSITION' : cols.POS,
+    'POS': cols.BP,
+    'BP': cols.BP,
+    'POSITION' : cols.BP,
     # NUMBER OF STUDIES
     'NSTUDY': cols.NSTUDY,
     'N_STUDY': cols.NSTUDY,
@@ -103,7 +103,7 @@ default_cnames = {
 describe_cname = {
     cols.SNP: 'Variant ID (e.g., rs number)',
     cols.CHR: 'Chromosome number',
-    cols.POS: 'Base-pair position',
+    cols.BP: 'Base-pair position',
     cols.PVAL: 'p-Value',
     cols.A1: 'Allele 1, interpreted as ref allele for signed sumstat.',
     cols.A2: 'Allele 2, interpreted as non-ref allele for signed sumstat.',
