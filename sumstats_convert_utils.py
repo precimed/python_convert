@@ -6,8 +6,8 @@ import six
 import itertools
 from collections import namedtuple
 
-Cols = namedtuple('Cols', ['SNP', 'CHR', 'POS', 'P', 'A1', 'A2', 'N', 'NCAS', 'NCON', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY'])
-cols = Cols._make(        ['SNP', 'CHR', 'POS', 'P', 'A1', 'A2', 'N', 'NCAS', 'NCON', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY'])
+Cols = namedtuple('Cols', ['SNP', 'CHR', 'POS', 'PVAL', 'A1', 'A2', 'N', 'NCAS', 'NCON', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY'])
+cols = Cols._make(        ['SNP', 'CHR', 'POS', 'PVAL', 'A1', 'A2', 'N', 'NCAS', 'NCON', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY'])
 
 null_values = {
     cols.LOGODDS: 0,
@@ -39,12 +39,12 @@ default_cnames = {
     'NSTUDIES': cols.NSTUDY,
     'N_STUDIES': cols.NSTUDY,
     # P-VALUE
-    'P': cols.P,
-    'PVALUE': cols.P,
-    'P_VALUE':  cols.P,
-    'PVAL': cols.P,
-    'P_VAL': cols.P,
-    'GC_PVALUE': cols.P,
+    'P': cols.PVAL,
+    'PVALUE': cols.PVAL,
+    'P_VALUE':  cols.PVAL,
+    'PVAL': cols.PVAL,
+    'P_VAL': cols.PVAL,
+    'GC_PVALUE': cols.PVAL,
     # ALLELE 1
     'A1': cols.A1,
     'ALLELE1': cols.A1,
@@ -104,7 +104,7 @@ describe_cname = {
     cols.SNP: 'Variant ID (e.g., rs number)',
     cols.CHR: 'Chromosome number',
     cols.POS: 'Base-pair position',
-    cols.P: 'p-Value',
+    cols.PVAL: 'p-Value',
     cols.A1: 'Allele 1, interpreted as ref allele for signed sumstat.',
     cols.A2: 'Allele 2, interpreted as non-ref allele for signed sumstat.',
     cols.N: 'Sample size',

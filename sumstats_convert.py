@@ -260,7 +260,7 @@ def make_mat(args):
 
     for csv_f, mat_f, trait in zip(args.csv_files, args.mat_files, args.traits):
         print('Reading summary statistics file {}...'.format(csv_f))
-        reader = pd.read_table(csv_f, sep='\t', usecols=[cols.A1, cols.A2, cols.SNP, cols.P, args.effect],
+        reader = pd.read_table(csv_f, sep='\t', usecols=[cols.A1, cols.A2, cols.SNP, cols.PVAL, args.effect],
                                chunksize=args.chunksize, dtype={args.effect:effect_col_dtype})
         df_out = []
         for i, chunk in enumerate(reader):
@@ -272,13 +272,13 @@ def make_mat(args):
                 for sid, gt in zip(chunk[cols.SNP], gtypes)]
             chunk = chunk.loc[ind,:]
             gtypes = gtypes[ind]
-            log10pv = -np.log10(chunk[cols.P].values)
+            log10pv = -np.log10(chunk[cols.PVAL].values)
             # not_ref_effect = [
             #   1 if effect allele in data == other allele in reference
             #   -1 if effect allele in data == effect allele in reference ]
             # So zscores with positive effects will be positive and zscores with 
             # negative effects will stay negative, since
-            # stats.norm.ppf(chunk[cols.P]*0.5) is always negetive (see zvect
+            # stats.norm.ppf(chunk[cols.PVAL]*0.5) is always negetive (see zvect
             # calculation below).
             not_ref_effect = np.array([-1 if gt in ref_dict[sid][:2] else 1
                 for sid, gt in zip(chunk[cols.SNP], gtypes)])
@@ -295,7 +295,7 @@ def make_mat(args):
                 effect_sign = np.sign(chunk[args.effect].values - 1)
                 effect_sign[effect_sign == 0] = 1
             effect_sign *= not_ref_effect
-            zvect = stats.norm.ppf(chunk[cols.P].values*0.5)*effect_sign
+            zvect = stats.norm.ppf(chunk[cols.PVAL].values*0.5)*effect_sign
             ind_ambiguous = [j for j,gt in enumerate(gtypes) if gt in AMBIGUOUS]
             # set zscore of ambiguous SNPs to nan
             zvect[ind_ambiguous] = np.nan
