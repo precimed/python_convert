@@ -1,3 +1,6 @@
+# Examples:
+# python sumstats_convert.py csv tests\case01.txt   tmp.txt  --force --auto
+# python sumstats_convert.py mat tests\1234_ref.bim tmp.txt  --force --traits test
 import pandas as pd
 import numpy as np
 from itertools import permutations
@@ -8,53 +11,35 @@ import sys
 import argparse
 import six
 from sumstats_convert_utils import *
-
-def get_str_list_sign(str_list):
-    return np.array([-1 if e[0]=='-' else 1 for e in str_list], dtype=np.int)
-
-_base_complement = {"A":"T", "C":"G", "G":"C", "T":"A"}
-def _complement(seq):
-    return "".join([_base_complement[b] for b in seq])
-
-ALLELES = "AGCT"
-COMPLEMENT = {''.join(s): _complement(s) for s in permutations(ALLELES, 2)}
-AMBIGUOUS = [aa for aa, cc in COMPLEMENT.items() if aa == cc[::-1]]
+import collections
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description="Convert summary statistics "
         "file into mat file through the intermediate csv file.")
     subparsers = parser.add_subparsers()
-    parser_csv = subparsers.add_parser("csv",
-        help="Create csv file with three columns: snpid, pvalue, zscores.")
-    parser_csv.add_argument("sumstats_file", type=str,
-        help="Tab-separated input file.")
-    parser_csv.add_argument("ref_file", type=str,
-        help="Tab-separated file with list of referense SNPs.")
+    parser_csv = subparsers.add_parser("csv", help="Create csv file with standard columns")
+    parser_csv.add_argument("sumstats_file", type=str, help="Input file with summary statistics")
     parser_csv.add_argument("output_file", type=str, help="Output csv file.")
-    parser_csv.add_argument("--id", default=None, type=str,
-        help="SNP id column.")
-    parser_csv.add_argument("--pval", default=None, type=str,
-        help="P-value column.")
-    parser_csv.add_argument("--effectA", default=None, type=str,
-        help="Effect allele column.")
-    parser_csv.add_argument("--otherA", default=None, type=str,
-        help="Other allele column.")
-    parser_csv.add_argument("--effect", default=None, type=str,
-        help="Effect column.")
-    parser_csv.add_argument("--signed-effect", action="store_true",
-        default=False, help="Effect is signed.")
-    parser_csv.add_argument("--ref-id", default="SNP", type=str,
-        help="Id column in reference file.")
-    parser_csv.add_argument("--ref-a1", default="A1", type=str,
-        help="First allele column in reference file.")
-    parser_csv.add_argument("--ref-a2", default="A2", type=str,
-        help="Second allele column in reference file.")
+
+    # Generate parameters from describe_cname.
+    # Keys in describe_cname will be used as standard columns names for the resulting csv file.
+    for cname in sorted(cols._asdict()):
+        parser_csv.add_argument("--{}".format(cname.lower()), default=None, type=str, help=describe_cname[cname])
+
+    parser_csv.add_argument("--auto", action="store_true", default=False,
+        help="Auto-detect column types based on a set of standard column names.")
     parser_csv.add_argument("--chunksize", default=100000, type=int,
         help="Size of chunck to read the file.")
-    parser_csv.add_argument("--force", action="store_true",
-        default=False, help="Force overwrite target files if they exist.")
-    parser_csv.add_argument("--delim-whitespace", action="store_true",
-        default=False, help="Accept delim-whitespace file")
+    parser_csv.add_argument("--force", action="store_true", default=False,
+        help="Force overwrite target files if they exist.")
+    parser_csv.add_argument("--head", default=0, type=int,
+        help="How many header lines of the file to print out for visual inspection (0 to disable)")
+    parser_csv.add_argument("--preview", default=0, type=int,
+        help="How many chunks to output into the output (debug option to preview large files that take long time to parse)")
+    parser_csv.add_argument("--compression", default=None, type=str, choices=['gzip', 'bz2', 'xz'],
+        help="Compression to use for the output file")
+    parser_csv.add_argument("--sep", default='\s+', type=str, choices=[',', ';', '\t', ' '],
+        help="Delimiter to use (',' ';' $' ' or $'\\t'). By default uses delim_whitespace option in pandas.read_table.")
     parser_csv.set_defaults(func=make_csv)
 
     parser_mat = subparsers.add_parser("mat", help="Create mat files that can "
@@ -69,126 +54,170 @@ def parse_args(args):
         help="Trait names that will be used in mat files.")
     parser_mat.add_argument("--ref-id", default="SNP", type=str,
         help="Id column in reference file.")
+    parser_mat.add_argument("--ref-a1", default="A1", type=str,
+        help="First allele column in reference file.")
+    parser_mat.add_argument("--ref-a2", default="A2", type=str,
+        help="Second allele column in reference file.")
+    parser_mat.add_argument("--effect", default='BETA', type=str, choices=['BETA', 'OR', 'Z', 'LOGODDS'],
+        help="Effect column.")
+    parser_mat.add_argument("--chunksize", default=100000, type=int,
+        help="Size of chunck to read the file.")
+    parser_mat.add_argument("--force", action="store_true", default=False,
+        help="Force overwrite target files if they exist.") 
     parser_mat.set_defaults(func=make_mat)
-
-    parser_mat = subparsers.add_parser("test",
-        help="Run test.")
-    parser_mat.set_defaults(func=run_test)
-
 
     return parser.parse_args(args)
 
+### =================================================================================
+###                          Implementation for parser_csv
+### ================================================================================= 
+def set_clean_args_cnames(args):
+    """
+    Inspect column names in user args, and clean them according to sumstats_convert_utils.clean_header()
+    Raises an exception if either before or after cleaning some column names are duplicated.
+    """
+    cnames = [x.lower() for x in cols._asdict()]
+    args_cnames = [args[x] for x in cnames if args[x] is not None]
+    if len(args_cnames) != len(set(args_cnames)):
+        raise(ValueError('Duplicated argument: {}'.format(find_duplicates(args_cnames))))
+
+    for cname in cnames:
+        if args[cname] is not None:
+            args[cname] = clean_header(args[cname])
+    args_clean_cnames = [args[x] for x in cnames if args[x] is not None]
+    if len(args_clean_cnames) != len(set(args_clean_cnames)):
+        raise(ValueError('Cleaning rules yield duplicated argument: {}'.format(find_duplicates(args_clean_cnames))))
+
+def set_clean_file_cnames(df):
+    """
+    Inspect column names in pd.DataFrame, and clean them according to sumstats_convert_utils.clean_header()
+    Raises an exception if either before or after cleaning some column names are duplicated.
+    """
+    file_cnames = df.columns
+    if len(file_cnames) != len(set(file_cnames)):
+        raise(ValueError('Unable to process input file due to duplicated column names'))
+    
+    clean_file_cnames = [clean_header(x) for x in file_cnames]
+    if len(clean_file_cnames) != len(set(clean_file_cnames)):
+        raise(ValueError('Cleaning column names resulted in duplicated column names: {}'.format(clean_file_cnames)))
+
+    df.columns = clean_file_cnames
+
+def find_duplicates(values):
+    return [item for item, count in collections.Counter(values).items() if count > 1]
+
+def find_auto_cnames(args, clean_file_cnames):
+    """
+    Auto-detect column using a set of default columns names 
+    """
+    
+    cnames = [x.lower() for x in cols._asdict()]
+    user_args = [args[x] for x in cnames if args[x] is not None]
+
+    for default_cname, cname in default_cnames.items():
+        # Ignore default cname if it is explicitly provided by the user
+        if (cname.lower() not in args) or args[cname.lower()]:
+            continue
+
+        # Ignore default cname if it is not present among file columns
+        if clean_header(default_cname) not in clean_file_cnames:
+            continue
+        
+        # Ignore default cname if user took the column for something else
+        if clean_header(default_cname) in user_args:
+            continue
+
+        args[cname.lower()] = clean_header(default_cname)
+
+def check_input_file(file):
+    if not os.path.isfile(file):
+        raise ValueError("Input file does not exist: {f}".format(f=file))
+
+def check_output_file(file, force=False):
+    # Delete target file if user specifies --force option
+    if force:
+        try:
+            os.remove(file)
+        except OSError:
+            pass
+
+    # Otherwise raise an error if target file already exists
+    if os.path.isfile(file) and not force:
+        raise ValueError("Output file already exists: {f}".format(f=file))
+
+    # Create target folder if it doesn't exist
+    output_dir = os.path.dirname(file)
+    if output_dir and not os.path.isdir(output_dir): os.makedirs(output_dir)  # ensure that output folder exists
 
 def make_csv(args):
-    """ Based on file with summary statistics creates a tab-delimited csv file
-    with 3 columns: snpid, pvalue, zscore.
-    Only SNPs from the rederence file are considered. Zscores of ambiguous SNPs
-    are set to NA.
     """
-    if os.path.isfile(args.output_file) and not args.force:
-        raise ValueError("Output file already exists!")
-    output_dir = os.path.dirname(args.output_file)
-    if not os.path.isdir(output_dir): os.makedirs(output_dir)  # ensure that output folder exists
-
-    cname_translation = find_column_name_translation(args.sumstats_file,
-        snp=args.id, p=args.pval, a1=args.effectA, a2=args.otherA,
-        odds_ratio=args.effect if not args.signed_effect else None,
-        beta=args.effect if args.signed_effect else None)
-    cname_description = {x: describe_cname[cname_translation[x]] for x in cname_translation if cname_translation[x] != 'UNKNOWN'}
-    print('Interpreting column names from summary statistics file as follows:')
-    print('\n'.join([x + ':\t' + cname_description[x] for x in cname_description]) + '\n')
-    cname_skip = [x for x in cname_translation if cname_translation[x ] == 'UNKNOWN']
-    if cname_skip: print('Skip the remaining columns ({}).'.format(', '.join(cname_skip)))
-    cname = {v: k for k, v in six.iteritems(cname_translation)}  # inverse mapping (ignore case when key has multiple values)
-    if not args.id: args.id = cname.get('SNP')
-    if not args.pval: args.pval = cname.get('P')
-    if not args.effectA: args.effectA = cname.get('A1')
-    if not args.otherA: args.otherA = cname.get('A2')
-    if not args.effect:
-        args.effect = next(iter(filter(None, [cname.get('BETA'), cname.get('LOG_ODDS'), cname.get('Z'), cname.get('OR')])), None)
-        args.signed_effect = False if 'OR' in cname else True
-
-    print('Reading reference file {}...'.format(args.ref_file))
-    usecols = [args.ref_id, args.ref_a1, args.ref_a2]
-    reader = pd.read_table(args.ref_file, sep='\t', usecols=usecols,
-        chunksize=args.chunksize)
-    ref_dict = {}
-    for chunk in reader:
-        gtypes = (chunk[args.ref_a1] + chunk[args.ref_a2]).apply(str.upper)
-        #TODO?: add check whether some id is already in ref_dict
-        ref_dict.update(dict(zip(chunk[args.ref_id], gtypes)))
-    ref_dict = {i: (aa, COMPLEMENT[aa], aa[::-1], COMPLEMENT[aa[::-1]])
-            for i, aa in ref_dict.items()}
-
-    print("Reference dict contains %d snps." % len(ref_dict))
+    Based on file with summary statistics creates a tab-delimited csv file with standard columns.
+    """
+    check_input_file(args.sumstats_file)
+    set_clean_args_cnames(vars(args))
+    check_output_file(args.output_file, args.force)
 
     print('Reading summary statistics file {}...'.format(args.sumstats_file))
-    print_header(args.sumstats_file, lines=5)
-    out_columns = ["snpid", "pvalue", "zscore"]
-    col_attr = ["id", "pval", "effectA", "otherA", "effect"]
-    usecols = [getattr(args, c) for c in col_attr]
-    # if signed_effect is true, take effect column as string to handle correctly
-    # case of truncated numbers, e.g.: 0.00 and -0.00 should have different sign
-    effect_col_dtype = str if args.signed_effect else np.float
+    if args.head > 0: print_header(args.sumstats_file, lines=args.head)
 
-    if args.delim_whitespace:
-        reader = pd.read_table(args.sumstats_file, delim_whitespace=True, usecols=usecols, chunksize=args.chunksize, dtype={args.effect:effect_col_dtype})
-    else:
-        reader = pd.read_table(args.sumstats_file, sep='\t', usecols=usecols, chunksize=args.chunksize, dtype={args.effect:effect_col_dtype})
-
+    reader = pd.read_table(args.sumstats_file, dtype=str, sep=args.sep, chunksize=args.chunksize)
     n_snps = 0
     with open(args.output_file, 'a') as out_f:
-        out_f.write("%s\n" % "\t".join(out_columns))
-        for i, chunk in enumerate(reader):
-            chunk = chunk.loc[chunk[args.id].isin(ref_dict),:]
-            if chunk.empty: raise(ValueError("No SNPs match after joining with reference data"))
-            gtypes = (chunk[args.effectA] + chunk[args.otherA]).apply(str.upper)
-            # index of SNPs that have the same alleles as indicated in reference
-            ind = [gt in ref_dict[sid]
-                for sid, gt in zip(chunk[args.id], gtypes)]
-            chunk = chunk.loc[ind,:]
-            gtypes = gtypes[ind]
-            log10pv = -np.log10(chunk[args.pval].values)
-            # not_ref_effect = [
-            #   1 if effect allele in data == other allele in reference
-            #   -1 if effect allele in data == effect allele in reference ]
-            # So zscores with positive effects will be positive and zscores with 
-            # negative effects will stay negative, since
-            # stats.norm.ppf(chunk[args.pval]*0.5) is always negetive (see zvect
-            # calculation below).
-            not_ref_effect = np.array([-1 if gt in ref_dict[sid][:2] else 1
-                for sid, gt in zip(chunk[args.id], gtypes)])
-            #TODO: check proportion of positive and negative effects
-            if args.signed_effect:
-                # effect column has str type
-                # -1 if effect starts with '-' else 1
-                effect_sign = get_str_list_sign(chunk[args.effect])
-            else:
-                # effect column has np.float type
-                # 1 if effect >=1 else -1
-                if (chunk[args.effect] < 0).any():
-                    raise ValueError("Effect column contains negative values, "
-                        "but --signed-effect option was not used.")
-                effect_sign = np.sign(chunk[args.effect].values - 1)
-                effect_sign[effect_sign == 0] = 1
-            effect_sign *= not_ref_effect
-            zvect = stats.norm.ppf(chunk[args.pval].values*0.5)*effect_sign
-            ind_ambiguous = [j for j,gt in enumerate(gtypes) if gt in AMBIGUOUS]
-            # set zscore of ambiguous SNPs to nan
-            zvect[ind_ambiguous] = np.nan
-            #TODO: check whether output df contains duplicated rs-ids (warn)
-            df = pd.DataFrame({"pvalue": log10pv, "zscore":zvect},
-                index=chunk[args.id])
-            df.to_csv(out_f, index=True, header=False, sep='\t', na_rep='NA')
-            n_snps += len(df)
-            print("{n} lines processed".format(n=(i+1)*args.chunksize))
+        for chunk_index, chunk in enumerate(reader):
+            original_file_cname = chunk.columns
+            set_clean_file_cnames(chunk)
+
+            if chunk_index == 0:  # First chunk => analyze column names
+                if args.auto: find_auto_cnames(vars(args), chunk.columns)
+            
+                # Find the map from (cleaned) column name to a standard cname (as it will appear in the resulting file)
+                cnames = [x.lower() for x in cols._asdict()]
+                cname_map = {vars(args)[cname] : cname.upper() for cname in cnames if vars(args)[cname] is not None}
+
+                # Report any missing columns that user requested to put in the resulting file
+                cname_missing = [x for x in cname_map if x not in chunk.columns]
+                if cname_missing: raise(ValueError('Columns {} are missing in the input file'.format(cname_missing)))
+
+                # Describe the mapping between old and new column names that we are going to perform
+                print('Interpret column names as follows:')
+                for original in original_file_cname:
+                    cname = cname_map.get(clean_header(original))
+                    print("\t{o} : {d} ({e})".format(o=original, d=cname, e="Will be deleted" if not cname else describe_cname[cname]))
+                if not cname_map: raise(ValueError('Arguments imply to delete all columns from the input file. Did you forget --auto flag?'))
+
+
+            chunk = chunk[list(cname_map.keys())]
+            chunk.columns = list(cname_map.values())
+            chunk = chunk.sort_index(axis=1)
+            chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA', compression=args.compression)
+            n_snps += len(chunk)
+            print("{n} lines processed".format(n=(chunk_index+1)*args.chunksize))
+            if args.preview and (chunk_index+1) >= args.preview:
+                print('Abort reading input file due to --preview flag.')
+                break
+
         print("{n} SNPs saved to {f}".format(n=n_snps, f=args.output_file))
 
+### =================================================================================
+###                          Implementation for parser_mat
+### ================================================================================= 
+def get_str_list_sign(str_list):
+    return np.array([-1 if e[0]=='-' else 1 for e in str_list], dtype=np.int)
+
+_base_complement = {"A":"T", "C":"G", "G":"C", "T":"A"}
+def _complement(seq):
+    return "".join([_base_complement[b] for b in seq])
+
+ALLELES = "AGCT"
+COMPLEMENT = {''.join(s): _complement(s) for s in permutations(ALLELES, 2)}
+AMBIGUOUS = [aa for aa, cc in COMPLEMENT.items() if aa == cc[::-1]]
 
 def make_mat(args):
-    """ Takes csv files (created with the csv task of this script) with three
-    columns: snpid, pvalue, zscore. Creates corresponding mat files which can be
-    used as an input for the conditional fdr model.
+    """
+    Takes csv files (created with the csv task of this script).
+    Require columns: SNP, P, and one of the signed summary statistics columns (BETA, OR, Z, LOGODDS).
+    Creates corresponding mat files which can be used as an input for the conditional fdr model.
+    Only SNPs from the reference file are considered. Zscores of ambiguous SNPs are set to NA.
     """
     if args.mat_files is None:
         args.mat_files = []
@@ -204,87 +233,99 @@ def make_mat(args):
             len(args.csv_files) != len(args.traits)):
         raise ValueError(("Number of input csv files should be equal to the "
             "number of output mat files and number of traits!"))
+    check_input_file(args.ref_file)
     for csv_f, mat_f in zip(args.csv_files, args.mat_files):
-        if not os.path.isfile(csv_f):
-            raise ValueError("%s input file not found!" % csv_f)
-        if os.path.isfile(mat_f):
-            raise ValueError("%s output file already exists!" % mat_f)
+        check_input_file(csv_f)
+        check_output_file(mat_f, args.force)
 
-    ref_snps = pd.read_table(args.ref_file, sep='\t', usecols=[args.ref_id],
-        squeeze=True)
+    # if signed_effect is true, take effect column as string to handle correctly
+    # case of truncated numbers, e.g.: 0.00 and -0.00 should have different sign
+    signed_effect = False if args.effect == cols.OR else True
+    effect_col_dtype = str if signed_effect else np.float
+
+    print('Reading reference file {}...'.format(args.ref_file))
+    usecols = [args.ref_id, args.ref_a1, args.ref_a2]
+    reader = pd.read_table(args.ref_file, sep='\t', usecols=usecols,
+        chunksize=args.chunksize)
+    ref_dict = {}
+    for chunk in reader:
+        gtypes = (chunk[args.ref_a1] + chunk[args.ref_a2]).apply(str.upper)
+        #TODO?: add check whether some id is already in ref_dict
+        ref_dict.update(dict(zip(chunk[args.ref_id], gtypes)))
+    ref_dict = {i: (aa, COMPLEMENT[aa], aa[::-1], COMPLEMENT[aa[::-1]])
+            for i, aa in ref_dict.items()}
+    ref_snps = pd.read_table(args.ref_file, sep='\t', usecols=[args.ref_id], squeeze=True)
     #TODO?: add check whether ref_snps contains duplicates
-    print("Reference file contains %d snps" % len(ref_snps))
+    print("Reference dict contains {d} snps.".format(d=len(ref_dict)))
 
     for csv_f, mat_f, trait in zip(args.csv_files, args.mat_files, args.traits):
-        df_out = pd.DataFrame(columns=["pvalue", "zscore"], index=ref_snps)
-        #TODO: check whether input df contains duplicated rs-ids (error)
-        df = pd.read_csv(csv_f, sep='\t', index_col=0)
-        df_out["pvalue"] = df["pvalue"]
-        df_out["zscore"] = df["zscore"]
-        save_dict = {"logpvec_"+trait: df_out["pvalue"].values,
-            "zvec_"+trait: df_out["zscore"].values}
-        # df_out.to_csv(mat_f+'.tmp', index=True, header=False, sep='\t')
+        print('Reading summary statistics file {}...'.format(csv_f))
+        reader = pd.read_table(csv_f, sep='\t', usecols=[cols.A1, cols.A2, cols.SNP, cols.P, args.effect],
+                               chunksize=args.chunksize, dtype={args.effect:effect_col_dtype})
+        df_out = []
+        for i, chunk in enumerate(reader):
+            chunk = chunk.loc[chunk[cols.SNP].isin(ref_dict),:]
+            if chunk.empty: continue
+            gtypes = (chunk[cols.A1] + chunk[cols.A2]).apply(str.upper)
+            # index of SNPs that have the same alleles as indicated in reference
+            ind = [gt in ref_dict[sid]
+                for sid, gt in zip(chunk[cols.SNP], gtypes)]
+            chunk = chunk.loc[ind,:]
+            gtypes = gtypes[ind]
+            log10pv = -np.log10(chunk[cols.P].values)
+            # not_ref_effect = [
+            #   1 if effect allele in data == other allele in reference
+            #   -1 if effect allele in data == effect allele in reference ]
+            # So zscores with positive effects will be positive and zscores with 
+            # negative effects will stay negative, since
+            # stats.norm.ppf(chunk[cols.P]*0.5) is always negetive (see zvect
+            # calculation below).
+            not_ref_effect = np.array([-1 if gt in ref_dict[sid][:2] else 1
+                for sid, gt in zip(chunk[cols.SNP], gtypes)])
+            #TODO: check proportion of positive and negative effects
+            if signed_effect:
+                # effect column has str type
+                # -1 if effect starts with '-' else 1
+                effect_sign = get_str_list_sign(chunk[args.effect])
+            else:
+                # effect column has np.float type
+                # 1 if effect >=1 else -1
+                if (chunk[args.effect] < 0).any():
+                    raise ValueError("OR column contains negative values")
+                effect_sign = np.sign(chunk[args.effect].values - 1)
+                effect_sign[effect_sign == 0] = 1
+            effect_sign *= not_ref_effect
+            zvect = stats.norm.ppf(chunk[cols.P].values*0.5)*effect_sign
+            ind_ambiguous = [j for j,gt in enumerate(gtypes) if gt in AMBIGUOUS]
+            # set zscore of ambiguous SNPs to nan
+            zvect[ind_ambiguous] = np.nan
+            #TODO: check whether output df contains duplicated rs-ids (warn)
+            df = pd.DataFrame({"pvalue": log10pv, "zscore":zvect}, index=chunk[cols.SNP])
+            if not df_out: df_out = df
+            else: df_out.append(df)
+            print("{n} lines processed".format(n=(i+1)*args.chunksize))
+
+        print("{n} SNPs from {f} matched with reference file".format(n=len(df_out), f=csv_f))
+        if df_out.empty: raise(ValueError("No SNPs match after joining with reference data"))
+
+        df_ref_aligned = pd.DataFrame(columns=["pvalue", "zscore"], index=ref_snps)
+        df_ref_aligned["pvalue"] = df_out["pvalue"]
+        df_ref_aligned["zscore"] = df_out["zscore"]
+        save_dict = {"logpvec_"+trait: df_ref_aligned["pvalue"].values, "zvec_"+trait: df_ref_aligned["zscore"].values}
         sio.savemat(mat_f, save_dict, format='5', do_compression=False,
             oned_as='column', appendmat=False)
         print("%s created" % mat_f)
 
-
-def run_test(args):
-    raise NotImplementedError("Testing is not yet implemented.")
-
-    out_csv = "test/output/test.csv"
-    out_mat = "test/output/test.mat"
-    for filename in [out_csv, out_mat]:
-        try:
-            os.remove(filename)
-            print("Removing %s" % filename)
-        except OSError:
-            pass
-
-    print("Running csv task.")
-    csv_args = ["csv", "test/input/pgc.adhd.full.2012-10_tabs_reduced.txt",
-        "test/input/2558411_ref.bim", out_csv, "--effect", "zscore",
-        "--signed-effect", "--ref-id", "SNP", "--ref-a1", "A1",
-        "--ref-a2", "A2"]
-    args = parse_args(csv_args)
-    args.func(args)
-
-    print("Running mat task.")
-    mat_args = ["mat", "test/input/2558411_ref.bim", out_csv, "--ref-id", "SNP",
-        "--traits", "adhd", "--mat-files", out_mat]
-    args = parse_args(mat_args)
-    args.func(args)
-
-    import scipy.io as sio
-    ref_mat = "test/input/adhd.mat"
-    print("Checking consistency of results with %s" % ref_mat)
-    ref = sio.loadmat(ref_mat)
-    test = sio.loadmat(out_mat)
-    ref_p, ref_z = ref["logpvec_adhd"], ref["zvec_adhd"]
-    test_p, test_z = test["logpvec_adhd"], test["zvec_adhd"]
-    valid_ref_p, valid_ref_z = np.isfinite(ref_p), np.isfinite(ref_z)
-    valid_test_p, valid_test_z = np.isfinite(test_p), np.isfinite(test_z)
-    assert (valid_ref_p==valid_test_p).all(), "NAN pattern of pvals differes!"
-    assert (valid_ref_z==valid_test_z).all(), "NAN pattern of zscores differes!"
-
-    thresh_all = 1.e-2
-    thresh_each = 1.e-3
-    ref_p, ref_z = ref_p[valid_ref_p], ref_z[valid_ref_z]
-    test_p, test_z = test_p[valid_test_p], test_z[valid_test_z]
-    diff_p, diff_z = np.abs(ref_p - test_p), np.abs(ref_z - test_z)
-    assert np.linalg.norm(diff_p,1)<thresh_all, "Pvals differ significantly!"
-    assert max(diff_p)<thresh_each, "Some pvals differ significantly!"
-    assert np.linalg.norm(diff_z,1)<thresh_all, "Zscores differ significantly!"
-    assert max(diff_z)<thresh_each, "Some zscores differ significantly!"
-    print("Testing successful!")
-
-
+### =================================================================================
+###                                Main section
+### ================================================================================= 
 if __name__ == "__main__":
     args = parse_args(sys.argv[1:])
     args.func(args)
     print("Done")
 
     # Examples
+    # (TBD: this section must be fixed)
     
     # csv task
     # python sumstats_convert.py csv ../data/pgc/adhd_y/daner_ADD9_0712_info08_snps_maf001.txt ../projects/adhd/cond_fdr/2m_template/2558411_ref.bim ../tmp/pgc_adhd_y_2m_info08_snp_maf001.csv --id SNP --effect OR --pval P --effectA A1 --otherA A2 --ref-id SNP --ref-a1 A1 --ref-a2 A2

@@ -10,14 +10,13 @@ def execute_command(command):
     #print(subprocess.check_output(command.split()).decode("utf-8"))
 
 def run(filename, matfile):
-    sumStats2ref = r'sumStats2ref.py'
     reffile = r'tests/1234_ref.bim'
     if os.path.isdir('TEMP_FOLDER'): shutil.rmtree('TEMP_FOLDER')
-    execute_command(r'python sumstats_convert.py csv {} {} TEMP_FOLDER/TEST2.csv'.format(filename, reffile))
-    execute_command(r'python sumstats_convert.py mat {} TEMP_FOLDER/TEST2.csv --traits test'.format(reffile))
+    execute_command(r'python sumstats_convert.py csv {} TEMP_FOLDER/TEST.csv --auto --force'.format(filename))
+    execute_command(r'python sumstats_convert.py mat {} TEMP_FOLDER/TEST.csv --traits test --force'.format(reffile))
 
     f1 = sio.loadmat(matfile)
-    f2 = sio.loadmat('TEMP_FOLDER/TEST2.mat')
+    f2 = sio.loadmat('TEMP_FOLDER/TEST.mat')
     assert(all(np.isfinite(f1['logpvec_test']) == np.isfinite(f2['logpvec_test'])))
     assert(all(np.isfinite(f1['zvec_test']) == np.isfinite(f2['zvec_test'])))
     assert(max(abs(f1['logpvec_test'] - f2['logpvec_test'])) < 1e-10)
