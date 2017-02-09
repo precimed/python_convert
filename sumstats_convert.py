@@ -239,8 +239,7 @@ def make_mat(args):
     if args.traits is None:
         args.traits = []
         for csv_f in args.csv_files:
-            trait = os.path.splitext(os.path.basename(csv_f))[0]
-            args.traits.append(trait)
+            args.traits.append('')
     if (len(args.csv_files) != len(args.mat_files) or
             len(args.csv_files) != len(args.traits)):
         raise ValueError(("Number of input csv files should be equal to the "
@@ -322,7 +321,7 @@ def make_mat(args):
         df_ref_aligned = pd.DataFrame(columns=["pvalue", "zscore"], index=ref_snps)
         df_ref_aligned["pvalue"] = df_out["pvalue"]
         df_ref_aligned["zscore"] = df_out["zscore"]
-        save_dict = {"logpvec_"+trait: df_ref_aligned["pvalue"].values, "zvec_"+trait: df_ref_aligned["zscore"].values}
+        save_dict = {"logpvec"+trait: df_ref_aligned["pvalue"].values, "zvec"+trait: df_ref_aligned["zscore"].values}
         sio.savemat(mat_f, save_dict, format='5', do_compression=False,
             oned_as='column', appendmat=False)
         print("%s created" % mat_f)

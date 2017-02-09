@@ -90,6 +90,7 @@ default_cnames = {
     'SIGNED_SUMSTAT': 'SIGNED_SUMSTAT',
     # STANDARD ERROR
     'SE' : cols.SE,
+    'STDERR' : cols.SE,
     # INFO
     'INFO': cols.INFO,
     # MAF
