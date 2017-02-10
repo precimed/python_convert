@@ -134,16 +134,42 @@ def clean_header(header):
     '''
     return header.upper().replace('-', '_').replace('.', '_').replace('\n', '')
 
-def _fix_chromosome_labels(sumDat, v='CHR'):
-    sumDat.loc[:,v] = pd.Series([re.sub('[chrCHR]','',
-        str(c)) for c in sumDat.loc[:,v]])
-    sumDat.loc[sumDat.loc[:, v]=='X', v] = '23'
-    sumDat.loc[sumDat.loc[:, v]=='x', v] = '23'
-    sumDat.loc[sumDat.loc[:, v]=='Y', v] = '24'
-    sumDat.loc[sumDat.loc[:, v]=='y', v] = '24'
-    sumDat.loc[sumDat.loc[:, v]=='M', v] = '25'
-    sumDat.loc[sumDat.loc[:, v]=='m', v] = '25'
-    sumDat.loc[:,v] = sumDat.loc[:, v].astype('float').astype('int')
+def format_chr(chrvec):
+    '''
+    Reformat chromosome names.
+
+    Input:
+    ------
+    Vector of chromosome IDs
+
+    Output:
+    -------
+    Vector of cleaned chromosome IDs
+
+    Note:
+    * Remove "chr/Chr/CHR/MT/mt" strings in the name
+    * Change chrX to 23, ChrY to 24, MT to 25
+    '''
+    try:
+        chrvec = chrvec.astype('str')
+        tmpchrvec = chrvec.str.replace('[chrCHR]', '', case=False)
+        tmpchrvec[tmpchrvec=='X'] = '23'
+        tmpchrvec[tmpchrvec=='x'] = '23'
+        tmpchrvec[tmpchrvec=='Y'] = '24'
+        tmpchrvec[tmpchrvec=='y'] = '24'
+        tmpchrvec[tmpchrvec=='M'] = '25'
+        tmpchrvec[tmpchrvec=='m'] = '25'
+        tmpchrvec[tmpchrvec=='MT'] = '25'
+        tmpchrvec[tmpchrvec=='mt'] = '25'
+        # TO-DO: Bellow is anoying
+        tmpchrvec[tmpchrvec=='NA'] = '-9'
+        tmpchrvec[tmpchrvec.isnull()] = '-9'
+        tmpchrvec[tmpchrvec=='nan'] = '-9'
+        tmpchrvec[tmpchrvec==' '] = '-9'
+        tmpchrvec = tmpchrvec.astype('float').astype('int')
+        return tmpchrvec
+    except:
+        raise
 
 def print_header(fh, lines=5):
     (openfunc, _) = get_compression(fh)

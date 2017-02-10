@@ -13,6 +13,7 @@ import six
 from sumstats_convert_utils import *
 import collections
 from shutil import copyfile
+import zipfile
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description="Convert summary statistics "
@@ -195,6 +196,15 @@ def make_csv(args):
             if cols.CHRPOS in chunk.columns:
                 chunk[cols.CHR], chunk[cols.BP] = chunk[cols.CHRPOS].str.split(':', 1).str
                 chunk.drop(cols.CHRPOS, axis=1, inplace=True)
+
+            # Ensure standard labels in CHR column
+            if cols.CHR in chunk.columns:
+                chunk[cols.CHR].fillna(-9, inplace=True)
+                chunk[cols.CHR] = format_chr(chunk[cols.CHR])
+
+            # Ensure that alleles are coded as capital letters
+            if cols.A1 in chunk.columns: chunk[cols.A1] = chunk[cols.A1].str.upper()
+            if cols.A2 in chunk.columns: chunk[cols.A2] = chunk[cols.A2].str.upper()
 
             chunk = chunk.sort_index(axis=1)
             chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA')
