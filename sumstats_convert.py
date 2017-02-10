@@ -37,8 +37,6 @@ def parse_args(args):
         help="How many header lines of the file to print out for visual inspection (0 to disable)")
     parser_csv.add_argument("--preview", default=0, type=int,
         help="How many chunks to output into the output (debug option to preview large files that take long time to parse)")
-    parser_csv.add_argument("--compression", default=None, type=str, choices=['gzip', 'bz2', 'xz'],
-        help="Compression to use for the output file")
     parser_csv.add_argument("--sep", default='\s+', type=str, choices=[',', ';', '\t', ' '],
         help="Delimiter to use (',' ';' $' ' or $'\\t'). By default uses delim_whitespace option in pandas.read_table.")
     parser_csv.set_defaults(func=make_csv)
@@ -69,8 +67,6 @@ def parse_args(args):
         help="Tab-sepatated csv files.")
     parser_rs.add_argument("--chunksize", default=100000, type=int,
         help="Size of chunk to read the file.")
-    parser_rs.add_argument("--compression", default=None, type=str, choices=['gzip', 'bz2', 'xz'],
-        help="Compression to use for the output file")
     parser_rs.set_defaults(func=make_rs)
 
     return parser.parse_args(args)
@@ -201,7 +197,7 @@ def make_csv(args):
                 chunk.drop(cols.CHRPOS, axis=1, inplace=True)
 
             chunk = chunk.sort_index(axis=1)
-            chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA', compression=args.compression)
+            chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA')
             n_snps += len(chunk)
             print("{n} lines processed".format(n=(chunk_index+1)*args.chunksize))
             if args.preview and (chunk_index+1) >= args.preview:
@@ -355,7 +351,7 @@ def make_rs(args):
                 if cols.SNP in chunk: chunk.drop(cols.SNP, axis=1, inplace=True)
                 chunk = pd.merge(chunk, ref_file, how='left', on=[cols.CHR, cols.BP])
                 chunk = chunk.sort_index(axis=1)
-                chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA', compression=args.compression)
+                chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA')
                 n_snps += len(chunk)
                 print("{n} lines processed".format(n=(chunk_index+1)*args.chunksize))
         os.remove(csv_f)
