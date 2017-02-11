@@ -14,6 +14,7 @@ from sumstats_convert_utils import *
 import collections
 from shutil import copyfile
 import zipfile
+import glob
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description="Convert summary statistics "
@@ -69,6 +70,13 @@ def parse_args(args):
     parser_rs.add_argument("--chunksize", default=100000, type=int,
         help="Size of chunk to read the file.")
     parser_rs.set_defaults(func=make_rs)
+
+    parser_ls = subparsers.add_parser("ls", help="Display information about columns present in standard sumstat files.")
+    parser_ls.add_argument("path", type=str,
+        help="File or regular expresion of files to show the info.")
+    parser_ls.add_argument("--snp", action="store_true", default=False,
+        help="Include information about how many SNPs are there in the file. This is slow because we need to scan the entire file.")
+    parser_ls.set_defaults(func=make_ls)
 
     return parser.parse_args(args)
 
@@ -368,6 +376,24 @@ def make_rs(args):
         os.rename(csv_f + '.tmp', csv_f)
         check_output_file(csv_f + '.tmp2', force=True)  # try remove, ignore if fails
         print("{n} SNPs saved to {f}".format(n=n_snps, f=csv_f))
+
+### =================================================================================
+###                          Implementation for parser_rs
+### =================================================================================
+def make_ls(args):
+    ml = max([len(os.path.basename(file)) for file in glob.glob(args.path)])
+    print('{f}\t{n}\t{c}'.format(f='file'.ljust(ml),n='#snp'.ljust(9),c='\t'.join(sorted(cols._asdict()))))
+    num_snps = 'n/a'
+    for file in glob.glob(args.path):
+        if not os.path.isfile(file): continue
+        if args.snp: num_snps = sum(1 for line in get_compression_and_open(file))-1
+        for chunk in pd.read_table(file, sep='\t', chunksize=1):
+            print('{f}\t{n}\t{c}'.format(f=os.path.basename(file).ljust(ml), c='\t'.join([str(x in chunk) for x in sorted(cols._asdict())]),n=str(num_snps).ljust(9)))
+            break
+    print('Columns description:')
+    for cname in sorted(cols._asdict()):
+        print('{c}\t{d}'.format(c=cname, d=describe_cname[cname]))
+
 
 ### =================================================================================
 ###                                Main section

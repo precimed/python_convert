@@ -178,6 +178,10 @@ def print_header(fh, lines=5):
             line = line if isinstance(line, six.string_types) else line.decode('utf-8')
             print(line.rstrip('\n'))
 
+def get_compression_and_open(fh):
+    (openfunc, _) = get_compression(fh)
+    return openfunc(fh)
+
 def get_compression(fh):
     '''
     Read filename suffixes and figure out whether it is gzipped,bzip2'ed or not compressed
