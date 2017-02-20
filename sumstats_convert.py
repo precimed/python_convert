@@ -78,6 +78,21 @@ def parse_args(args):
         help="Include information about how many SNPs are there in the file. This is slow because we need to scan the entire file.")
     parser_ls.set_defaults(func=make_ls)
 
+    parser_mattocsv = subparsers.add_parser("mat-to-csv", help="Convert matlab .mat file with logpvec and zvec into CSV files.")
+    parser_mattocsv.add_argument("ref_file", type=str,
+        help="Tab-separated file with list of referense SNPs.")
+    parser_mattocsv.add_argument("mat_files", type=str, nargs='+',
+        help="Input .mat files.")
+    parser_mattocsv.add_argument("--csv-files", type=str, nargs='+', default=None,
+        help="Output .csv files.")
+    parser_mattocsv.add_argument("--force", action="store_true", default=False,
+        help="Force overwrite target files if they exist.")
+    parser_mattocsv.add_argument("--na-rep", default='NA', type=str, choices=['NA', ''],
+        help="Missing data representation.")
+    parser_mattocsv.add_argument("--gzip", action="store_true", default=False,
+        help="A flag indicating whether to compress the resulting file with gzip.")
+
+    parser_mattocsv.set_defaults(func=mat_to_csv)
     return parser.parse_args(args)
 
 ### =================================================================================
@@ -378,7 +393,7 @@ def make_rs(args):
         print("{n} SNPs saved to {f}".format(n=n_snps, f=csv_f))
 
 ### =================================================================================
-###                          Implementation for parser_rs
+###                          Implementation for make_ls
 ### =================================================================================
 def make_ls(args):
     ml = max([len(os.path.basename(file)) for file in glob.glob(args.path)])
@@ -394,6 +409,35 @@ def make_ls(args):
     for cname in sorted(cols._asdict()):
         print('{c}\t{d}'.format(c=cname, d=describe_cname[cname]))
 
+### =================================================================================
+###                          Implementation for mat_to_csv
+### =================================================================================
+def mat_to_csv(args):
+    check_input_file(args.ref_file)
+    if args.csv_files is None:
+        args.csv_files = []
+        for mat_f in args.mat_files:
+            csv_f = os.path.splitext(mat_f)[0] + ".csv"
+            args.csv_files.append(csv_f)
+    for mat_f, csv_f in zip(args.mat_files, args.csv_files):
+        check_input_file(mat_f)
+        check_output_file(csv_f, args.force)
+
+    print('Reading reference file {}...'.format(args.ref_file))
+    ref_file = pd.read_table(args.ref_file, sep='\t', usecols=[cols.SNP, cols.A1, cols.A2])
+    print("Reference dict contains {d} snps.".format(d=len(ref_file)))
+
+    for mat_f, csv_f in zip(args.mat_files, args.csv_files):
+        print('Reading .mat file {}...'.format(mat_f))
+        df = ref_file.copy()
+        sumstats = sio.loadmat(mat_f)
+        for key in sumstats.keys():
+            if key.lower().startswith('zvec'): df['Z'] = sumstats[key]
+            if key.lower().startswith('logpvec'): df['PVAL'] = np.power(10, -sumstats[key])
+            if key.lower().startswith('nvec'): df['N'] = sumstats[key]
+        df.to_csv(csv_f + '.gz' if args.gzip else '',
+                  index=False, header=True, sep='\t', na_rep=args.na_rep,
+                  compression='gzip' if args.gzip else None)
 
 ### =================================================================================
 ###                                Main section
