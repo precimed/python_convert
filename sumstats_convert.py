@@ -301,7 +301,7 @@ def make_mat(args):
     for csv_f, mat_f, trait in zip(args.csv_files, args.mat_files, args.traits):
         print('Reading summary statistics file {}...'.format(csv_f))
         reader = pd.read_table(csv_f, sep='\t', usecols=[cols.A1, cols.A2, cols.SNP, cols.PVAL, args.effect],
-                               chunksize=args.chunksize, dtype={args.effect:effect_col_dtype})
+                               chunksize=args.chunksize, dtype={args.effect:effect_col_dtype}, float_precision='high')
         df_out = None
         for i, chunk in enumerate(reader):
             chunk = chunk.loc[chunk[cols.SNP].isin(ref_dict),:]
@@ -345,6 +345,12 @@ def make_mat(args):
             else: df_out = df_out.append(df)
             print("{n} lines processed, {m} SNPs matched with reference file".format(n=(i+1)*args.chunksize, m=len(df_out)))
         if df_out.empty: raise(ValueError("No SNPs match after joining with reference data"))
+        dup_index = df_out.index.duplicated(keep=False)
+        if dup_index.any():
+            print("Duplicated SNP ids detected:")
+            print(df_out[dup_index])
+            print("Keeping only the first occurance.")
+        df_out = df_out[~df_out.index.duplicated(keep='first')]
 
         print('Writing .mat file...')
         df_ref_aligned = pd.DataFrame(columns=["pvalue", "zscore"], index=ref_snps)
