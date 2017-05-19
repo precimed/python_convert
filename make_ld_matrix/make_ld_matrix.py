@@ -42,7 +42,7 @@ def make_ld_matrix(args):
 
     # Read the template
     print('Reading {0}...'.format(args.ref))
-    ref = pd.read_csv(args.ref, delim_whitespace=True)
+    ref = pd.read_csv(args.ref, delim_whitespace=True, usecols=['BP', 'CHR', 'SNP'])
     nsnp = ref.shape[0]
     chrpos_to_id = dict([((chr, pos), index) for chr, pos, index in zip(ref['CHR'], ref['BP'], ref.index)])
     if len(chrpos_to_id) != nsnp: raise ValueError("Duplicated CHR:POS pairs found in the reference file")
@@ -50,8 +50,12 @@ def make_ld_matrix(args):
     if args.vcf is not None:
        args.bfile = process_vcf_file(args.vcf, ref, args.keep, 'tmp', args.plink)
     
-    execute_command('{0} --bfile {1} --freq --out {1}'.format(args.plink, args.bfile))
-    mafvec = make_maf_vector(chrpos_to_id, nsnp, args.bfile);
+    if args.bfile is not None:
+        execute_command('{0} --bfile {1} --freq --out {1}'.format(args.plink, args.bfile))
+        mafvec = make_maf_vector(chrpos_to_id, nsnp, args.bfile);
+    else:
+        mafvec = np.empty((nsnp, 1))
+        mafvec[:] = np.NAN
 
     if args.ldfile is None:
         # Create LD file in table format
