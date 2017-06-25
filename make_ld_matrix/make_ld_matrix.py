@@ -11,6 +11,7 @@ import pandas as pd
 import numpy as np
 import argparse
 import sys
+import os.path
 from make_maf_vector import make_maf_vector
 from genotypes2ref import process_vcf_file
 
@@ -39,10 +40,14 @@ def parse_args(args):
 def make_ld_matrix(args):
     if not args.savemat and not args.saveltm:
         raise ValueError('No output requested, use --savemat or --saveltm')
+    if args.savemat and os.path.isfile(args.savemat):
+        raise ValueError('Output file already exist: {}'.format(args.savemat))
+    if args.saveltm and os.path.isfile(args.saveltm):
+        raise ValueError('Output file already exist: {}'.format(args.saveltm))
 
     # Read the template
     print('Reading {0}...'.format(args.ref))
-    ref = pd.read_csv(args.ref, delim_whitespace=True, usecols=['BP', 'CHR', 'SNP'])
+    ref = pd.read_csv(args.ref, delim_whitespace=True, usecols=['BP', 'CHR'])
     nsnp = ref.shape[0]
     chrpos_to_id = dict([((chr, pos), index) for chr, pos, index in zip(ref['CHR'], ref['BP'], ref.index)])
     if len(chrpos_to_id) != nsnp: raise ValueError("Duplicated CHR:POS pairs found in the reference file")
