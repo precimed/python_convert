@@ -93,6 +93,24 @@ def parse_args(args):
         help="A flag indicating whether to compress the resulting file with gzip.")
 
     parser_mattocsv.set_defaults(func=mat_to_csv)
+
+    parser_ldsctomat = subparsers.add_parser("ldsc-to-mat", help="Convert .ldscore, .M, .M_5_50 and binary .annot files from LD score regression to .mat files.")
+    parser_ldsctomat.add_argument("ref_file", type=str,
+        help="Tab-separated file with list of referense SNPs.")
+    parser_ldsctomat.add_argument("out_file", type=str,
+        help="Output .mat file.")
+    parser_ldsctomat.add_argument("--ldscore", type=str, default=None,
+        help="Name of .ldscore.gz files, where symbol @ indicates chromosome index. Example: baseline.@.l2.ldscore.gz")
+    parser_ldsctomat.add_argument("--annot", type=str, default=None,
+        help="Name of .annot.gz files, where symbol @ indicates chromosome index. Example: baseline.@.annot.gz")
+    parser_ldsctomat.add_argument("--M", type=str, default=None,
+        help="Name of .M files, where symbol @ indicates chromosome index. Example: baseline.@.l2.M")
+    parser_ldsctomat.add_argument("--M-5-50", type=str, default=None,
+        help="Name of .M_5_50 files, where symbol @ indicates chromosome index. Example: baseline.@.l2.M_5_50")
+    parser_ldsctomat.add_argument("--force", action="store_true", default=False,
+        help="Force overwrite target files if they exist.")
+    parser_ldsctomat.set_defaults(func=ldsc_to_mat)
+
     return parser.parse_args(args)
 
 ### =================================================================================
@@ -444,6 +462,58 @@ def mat_to_csv(args):
         df.to_csv(csv_f + '.gz' if args.gzip else '',
                   index=False, header=True, sep='\t', na_rep=args.na_rep,
                   compression='gzip' if args.gzip else None)
+
+### =================================================================================
+###                          Implementation for ldsc_to_mat
+### =================================================================================
+def ldsc_to_mat(args):
+    check_input_file(args.ref_file)
+    check_output_file(args.out_file, args.force)
+    for chri in range(1, 23):
+        if args.ldscore: check_input_file(args.ldscore.replace('@', str(chri)))
+        if args.annot: check_input_file(args.annot.replace('@', str(chri)))
+        if args.M: check_input_file(args.M.replace('@', str(chri)))
+        if args.M_5_50: check_input_file(args.M_5_50.replace('@', str(chri)))
+
+    print('Reading reference file {}...'.format(args.ref_file))
+    ref_file = pd.read_table(args.ref_file, sep='\t', usecols=[cols.SNP, cols.A1, cols.A2])
+    print("Reference dict contains {d} snps.".format(d=len(ref_file)))
+
+    save_dict = {}
+    if args.ldscore:
+        df_ldscore = pd.concat([pd.read_csv(args.ldscore.replace('@', str(chri)), delim_whitespace=True)  for chri in range(1, 23)])
+        df_ldscore.drop([x for x in ['CHR', 'BP', 'CM', 'MAF'] if x in df_ldscore], inplace=True, axis=1)
+        print('Shape of ldscore file: {shape}'.format(shape=df_ldscore.shape))
+        df_ldscore = pd.merge(ref_file[['SNP']], df_ldscore, how='left', on='SNP')
+        del df_ldscore['SNP']
+        print('Shape of ldscore file after merge: {shape}'.format(shape=df_ldscore.shape))
+        save_dict['annonames'] = list(df_ldscore.columns)
+        save_dict['annomat'] = df_ldscore.values
+
+    if args.annot:
+        df_annot = pd.concat([pd.read_csv(args.annot.replace('@', str(chri)), delim_whitespace=True)  for chri in range(1, 23)])
+        df_annot.drop([x for x in ['CHR', 'BP', 'CM', 'MAF'] if x in df_annot], inplace=True, axis=1)
+        print('Shape of annots file: {shape}'.format(shape=df_annot.shape))
+        df_annot = pd.merge(ref_file[['SNP']], df_annot, how='left', on='SNP')
+        del df_annot['SNP']
+        print('Shape of annots file after merge: {shape}'.format(shape=df_annot.shape))
+        save_dict['annonames_bin'] = list(df_annot.columns)
+        save_dict['annomat_bin'] = df_annot.values
+
+    if args.M_5_50:
+        m_5_50 = pd.concat([pd.read_csv(args.M_5_50.replace('@', str(chri)), delim_whitespace=True, header=None) for chri in range(1, 23)])
+        m_5_50 = np.atleast_2d(m_5_50.sum().values)
+        print('M_5_50={}'.format(m_5_50))
+        save_dict['M_5_50']=m_5_50
+
+    if args.M:
+        m = pd.concat([pd.read_csv(args.M.replace('@', str(chri)), delim_whitespace=True, header=None) for chri in range(1, 23)])
+        m = np.atleast_2d(m.sum().values)
+        print('M={}'.format(m))
+        save_dict['M']=m
+
+    sio.savemat(args.out_file, save_dict, format='5', do_compression=False, oned_as='column', appendmat=False)
+    print('Result written to {f}'.format(f=args.out_file))
 
 ### =================================================================================
 ###                                Main section
