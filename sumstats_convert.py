@@ -61,6 +61,27 @@ def parse_args(args):
         help="Force overwrite target files if they exist.") 
     parser_mat.set_defaults(func=make_mat)
 
+    parser_lift = subparsers.add_parser("lift", help="Lift RS numbers to a newer version of SNPdb, and/or liftover chr:pos to another genomic build using UCSC chain files.")
+    parser_lift.add_argument("sumstats_file", type=str, help="Input file with summary statistics")
+    parser_lift.add_argument("output_file", type=str, help="Output csv file.")
+    parser_lift.add_argument("--chain-file", default=None, type=str,
+        help="Chain file to use for CHR:BP conversion between genomic builds")
+    parser_lift.add_argument("--snp-chrpos", default=None, type=str,
+        help="NCBI SNPChrPosOnRef file.")
+    parser_lift.add_argument("--snp-history", default=None, type=str,
+        help="NCBI SNPHistory file.")
+    parser_lift.add_argument("--rs-merge-arch", default=None, type=str,
+        help="NCBI RsMergeArch file.")
+    parser_lift.add_argument("--force", action="store_true", default=False,
+        help="Force overwrite target files if they exist.")
+    parser_lift.add_argument("--keep-bad-snps", action="store_true", default=False,
+        help="Keep SNPs with underined rs# number or CHR:POS location in the output file.")
+    parser_lift.add_argument("--na-rep", default='NA', type=str, choices=['NA', ''],
+        help="Missing data representation.")
+    parser_lift.add_argument("--gzip", action="store_true", default=False,
+        help="A flag indicating whether to compress the resulting file with gzip.")
+    parser_lift.set_defaults(func=make_lift)
+
     parser_rs = subparsers.add_parser("rs", help="Augument summary statistic file with SNP RS number from reference file. "
         "Merging is done on chromosome and position. The output is written back into the original file. ")
     parser_rs.add_argument("ref_file", type=str,
@@ -378,6 +399,123 @@ def make_mat(args):
         sio.savemat(mat_f, save_dict, format='5', do_compression=False,
             oned_as='column', appendmat=False)
         print("%s created" % mat_f)
+
+### =================================================================================
+###                          Implementation for parser_lift
+### =================================================================================
+def make_lift(args):
+    """
+    Lift RS numbers to a newer version of SNPdb, and/or
+    liftover chr:pos to another genomic build using NCBI chain files.
+    """
+    from pyliftover import LiftOver
+    from lift_rs_numbers import LiftRsNumbers
+
+    check_input_file(args.sumstats_file)
+    check_output_file(args.output_file, args.force)
+
+    if args.chain_file is not None: check_input_file(args.chain_file)
+    if args.snp_chrpos is not None: check_input_file(args.snp_chrpos)
+    if args.snp_history is not None: check_input_file(args.snp_history)
+    if args.rs_merge_arch is not None: check_input_file(args.rs_merge_arch)
+
+    if (args.snp_history is not None) != (args.rs_merge_arch is not None):
+        raise(ValueError('--snp-history and --rs-merge-arch must be used together'))
+
+    print('Reading summary statistics file {}...'.format(args.sumstats_file))
+    df = pd.read_table(args.sumstats_file, sep='\t')
+    print('Done, {} markers found'.format(len(df)))
+
+    lift_bp = None; lift_rs = None; snp_chrpos = None
+
+    if (args.chain_file is not None) and (cols.CHR in df) and (cols.BP in df):
+        print('Reading {}...'.format(args.chain_file))
+        lift_bp = LiftOver(args.chain_file)
+
+    if (args.snp_history is not None) and (cols.SNP in df):
+        lift_rs = LiftRsNumbers(hist_file=args.snp_history, merge_file=args.rs_merge_arch)
+
+    if (args.snp_chrpos is not None) and (cols.SNP in df) and (cols.CHR in df) and (cols.BP in df):
+        print('Reading {}...'.format(args.snp_chrpos))
+        snp_chrpos = pd.read_table(args.snp_chrpos, sep='\t', header=None, usecols=[0,1,2])
+        snp_chrpos.columns=['snp_id','chr','pos'] #,'orien','neighbor_snp_list','isPAR']
+        snp_chrpos.dropna(subset=['pos'],inplace=True)           # drop NA positions
+        snp_chrpos['pos']=snp_chrpos['pos'].astype(np.int) + 1   # convert to integer unity-based positions
+        snp_chrpos['chr'].replace({'X':23, 'Y':24, 'PAR': 25, 'MT': 26}, inplace=True)   # standarize chr labels
+        snp_chrpos['chr']=snp_chrpos['chr'].astype(np.int)
+        print('Done, found {} entries'.format(len(snp_chrpos)))
+        # if snp_chrpos.duplicated(subset=['snp_id'], keep=False).sum() != 0:
+        #   raise('Duplicated snp_id found in SNPChrPosOnRef file')
+
+    indices_with_old_chrpos = range(len(df))  # indices with original chr:pos
+    fixes = []
+    if cols.SNP in df:
+        if lift_rs is not None:
+            # Fix1 brings forward SNP rs# numbers and set SNP rs# to None for SNPs found in SNPHistory table
+            df[cols.SNP], stats = lift_rs.lift(df[cols.SNP])
+            fixes.append('{} rs# numbers has changed based on RsMergeArch table'.format(stats['lifted']))
+            print(stats)
+
+        if (snp_chrpos is not None) and (cols.CHR in df) and (cols.BP in df):
+            # Fix2 set chr:pos based on SNPChrPosOnRef table (only applies to SNPs with rs# number, not to other markers)
+            df['SNP_LIFTED'] = [(int(x[2:]) if (x and x.startswith('rs') and x[2:].isdigit()) else -1) for x in df[cols.SNP]]
+            df = pd.merge(df, snp_chrpos, how='left', left_on='SNP_LIFTED', right_on='snp_id')
+            print('Warning: there are {} SNPs with a valid RS number, but not found in SNPChrPosOnRef'.format(((df['SNP_LIFTED'] != -1) & df['snp_id'].isnull()).sum()))
+
+            idx = ((df['pos'] != df[cols.BP]) | (df['chr'] != df[cols.CHR])) & ~df['pos'].isnull() & ~df['chr'].isnull()
+            df.ix[idx, cols.BP] = df.ix[idx, 'pos'].astype(int)
+            df.ix[idx, cols.CHR] = df.ix[idx, 'chr'].astype(int)
+            fixes.append('{} markers receive new CHR:POS based on SNPChrPosOnRef table'.format(idx.sum()))
+
+            indices_with_old_chrpos = [i for (i, b) in enumerate(df['pos'].isnull() | df['chr'].isnull()) if b]
+            df.drop(['SNP_LIFTED', 'snp_id', 'chr', 'pos'], axis=1, inplace=True)
+
+    if (lift_bp is not None) and (cols.CHR in df) and (cols.BP in df):
+        # Fix3 lifts chr:pos to another genomic build. This step is OFF by default, only applies if user provided chain file.
+        # Note that lifting with pyliftover is rather slow, so we apply this step only to markers that are not in SNPChrPosOnRef table.
+        print('Lift CHR:POS for {} SNPs to another genomic build...'.format(len(indices_with_old_chrpos)))
+        unique = 0; multi = 0; failed = 0
+        for i, index in enumerate(indices_with_old_chrpos):
+            if (i+1) % 100 == 0: print('Finish {} SNPs'.format(i+1))
+            chri = int(df.ix[index, cols.CHR]); bp = int(df.ix[index, cols.BP]); snp = df.ix[index, cols.SNP]
+            lifted = lift_bp.convert_coordinate('chr{}'.format(chri), bp)
+            if (lifted is None) or (len(lifted) == 0):
+                #print('Unable to lift SNP {} at chr{}:{}, delete'.format(snp, chri, bp))
+                df.ix[index, cols.CHR] = None
+                df.ix[index, cols.BP] = None
+                failed += 1
+                continue
+            if len(lifted) > 1:
+                print('Warning: SNP {} at chr{}:{} lifts to multiple position, use first.'.format(snp, chri, bp))
+                multi += 1
+            if len(lifted) == 1:
+                unique += 1
+
+            df.ix[index, cols.CHR] = int(lifted[0][0][3:])
+            df.ix[index, cols.BP] = lifted[0][1]
+        print('Done, {} failed, {} unique, {} multi'.format(failed, unique, multi))
+        fixes.append('{} markers receive new CHR:POS based on liftover chain files'.format(unique + multi))
+
+    if not args.keep_bad_snps:
+        if lift_rs and (cols.SNP in df):
+            df_len = len(df)
+            df.dropna(subset=[cols.SNP], inplace=True)                  # Fix4 due to SNP being deleted from dbSNP
+            fixes.append("{n} markers were dropped based on SNPHistory table".format(n = df_len - len(df)))
+
+        if (cols.CHR in df) and (cols.BP in df):
+            if lift_bp:
+                df_len = len(df)
+                df.dropna(subset=[cols.CHR, cols.BP], inplace=True)     # Fix5, due to failed liftover across genomic builds
+                fixes.append("{n} markers were dropped due to failed CHR:POS lift".format(n = df_len - len(df)))
+            df[cols.CHR] = df[cols.CHR].astype(int)
+            df[cols.BP] = df[cols.BP].astype(int)
+
+    df.to_csv(args.output_file + ('.gz' if args.gzip else ''),
+        index=False, header=True, sep='\t', na_rep=args.na_rep,
+        compression='gzip' if args.gzip else None)
+
+    print("{n} SNPs saved to {f}".format(n=len(df), f=args.output_file))
+    print('Summary: \n\t{}'.format("\n\t".join(fixes)))
 
 ### =================================================================================
 ###                          Implementation for parser_rs

@@ -148,19 +148,22 @@ def format_chr(chrvec):
 
     Note:
     * Remove "chr/Chr/CHR/MT/mt" strings in the name
-    * Change chrX to 23, ChrY to 24, MT to 25
+    * Change chrX to 23, ChrY to 24, PAR to 25, MT to 26
+    * (as in plink, https://www.cog-genomics.org/plink/1.9/input#allow_extra_chr)
     '''
     try:
-        chrvec = chrvec.astype('str')
-        tmpchrvec = chrvec.str.replace('[chrCHR]', '', case=False)
+        tmpchrvec = chrvec.astype('str')
         tmpchrvec[tmpchrvec=='X'] = '23'
         tmpchrvec[tmpchrvec=='x'] = '23'
         tmpchrvec[tmpchrvec=='Y'] = '24'
         tmpchrvec[tmpchrvec=='y'] = '24'
-        tmpchrvec[tmpchrvec=='M'] = '25'
-        tmpchrvec[tmpchrvec=='m'] = '25'
-        tmpchrvec[tmpchrvec=='MT'] = '25'
-        tmpchrvec[tmpchrvec=='mt'] = '25'
+        tmpchrvec[tmpchrvec=='PAR'] = '25'
+        tmpchrvec[tmpchrvec=='par'] = '25'
+        tmpchrvec[tmpchrvec=='M'] = '26'
+        tmpchrvec[tmpchrvec=='m'] = '26'
+        tmpchrvec[tmpchrvec=='MT'] = '26'
+        tmpchrvec[tmpchrvec=='mt'] = '26'
+        tmpchrvec = tmpchrvec.str.replace('[chrCHR]', '', case=False)
         # TO-DO: Bellow is anoying
         tmpchrvec[tmpchrvec=='NA'] = '-9'
         tmpchrvec[tmpchrvec.isnull()] = '-9'
