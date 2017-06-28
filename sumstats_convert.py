@@ -115,11 +115,13 @@ def parse_args(args):
 
     parser_mattocsv.set_defaults(func=mat_to_csv)
 
-    parser_ldsctomat = subparsers.add_parser("ldsc-to-mat", help="Convert .ldscore, .M, .M_5_50 and binary .annot files from LD score regression to .mat files.")
+    parser_ldsctomat = subparsers.add_parser("ldsc-to-mat", help="Convert .sumstats, .ldscore, .M, .M_5_50 and binary .annot files from LD score regression to .mat files.")
     parser_ldsctomat.add_argument("ref_file", type=str,
         help="Tab-separated file with list of referense SNPs.")
     parser_ldsctomat.add_argument("out_file", type=str,
         help="Output .mat file.")
+    parser_ldsctomat.add_argument("--sumstats", type=str, default=None,
+        help="Name of .sumstats.gz file")
     parser_ldsctomat.add_argument("--ldscore", type=str, default=None,
         help="Name of .ldscore.gz files, where symbol @ indicates chromosome index. Example: baseline.@.l2.ldscore.gz")
     parser_ldsctomat.add_argument("--annot", type=str, default=None,
@@ -606,18 +608,43 @@ def mat_to_csv(args):
 ### =================================================================================
 def ldsc_to_mat(args):
     check_input_file(args.ref_file)
-    check_output_file(args.out_file, args.force)
+    if args.sumstats: check_input_file(args.sumstats)
     for chri in range(1, 23):
         if args.ldscore: check_input_file(args.ldscore.replace('@', str(chri)))
         if args.annot: check_input_file(args.annot.replace('@', str(chri)))
         if args.M: check_input_file(args.M.replace('@', str(chri)))
         if args.M_5_50: check_input_file(args.M_5_50.replace('@', str(chri)))
+    check_output_file(args.out_file, args.force)
 
     print('Reading reference file {}...'.format(args.ref_file))
     ref_file = pd.read_table(args.ref_file, sep='\t', usecols=[cols.SNP, cols.A1, cols.A2])
     print("Reference dict contains {d} snps.".format(d=len(ref_file)))
 
     save_dict = {}
+    if args.sumstats:
+        df_sumstats = pd.read_csv(args.sumstats, sep='\t')
+        df_len = len(df_sumstats)
+        print('Read {} SNPs from --sumstats file'.format(df_len))
+
+        df_sumstats = pd.merge(ref_file, df_sumstats, how='left', on=cols.SNP)
+        df_sumstats = df_sumstats.dropna(how='any')
+        print('Removed {} SNPs not in --ref file'.format(df_len - len(df_sumstats)))
+        df_len = len(df_sumstats)
+
+        df_sumstats['ALLELES'] = df_sumstats.A1_x + df_sumstats.A2_x + df_sumstats.A1_y + df_sumstats.A2_y
+        df_sumstats = df_sumstats[filter_alleles(df_sumstats['ALLELES'])].copy()
+        print('Removed {} SNPs with alleles not matching --ref file'.format(df_len - len(df_sumstats)))
+        print('{} SNPs remain'.format(len(df_sumstats)))
+
+        df_z = df_sumstats.Z.copy()
+        df_sumstats.Z = align_alleles(df_sumstats.Z, df_sumstats['ALLELES'])
+        print('Flip z score for {} SNPs'.format((df_sumstats.Z != df_z).sum()))
+
+        df_sumstats.drop(['A1_x', 'A2_x', 'A1_y', 'A2_y','ALLELES'], axis=1, inplace=True)
+        df_sumstats = pd.merge(ref_file, df_sumstats, how='left', on=cols.SNP)
+        save_dict['zvec'] = df_sumstats["Z"].values
+        save_dict['nvec'] = df_sumstats["N"].values
+
     if args.ldscore:
         df_ldscore = pd.concat([pd.read_csv(args.ldscore.replace('@', str(chri)), delim_whitespace=True)  for chri in range(1, 23)])
         df_ldscore.drop([x for x in ['CHR', 'BP', 'CM', 'MAF'] if x in df_ldscore], inplace=True, axis=1)

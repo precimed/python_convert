@@ -1,10 +1,55 @@
+# Misc utils to deal with summary stat files.
+# Some parts of the code in this file originates from https://github.com/bulik/ldsc/,
+# which is licensed under GNU General Public License v3.0
+# See https://github.com/bulik/ldsc/blob/master/LICENSE for complete license.
+
 import sys, os, re, logging, datetime
 import numpy as np
 import pandas as pd
 import gzip
 import six
-import itertools
+import itertools as it
 from collections import namedtuple
+
+COMPLEMENT_ALLELE = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C'}
+# bases
+BASES = COMPLEMENT_ALLELE.keys()
+# true iff strand ambiguous
+STRAND_AMBIGUOUS = {''.join(x): x[0] == COMPLEMENT_ALLELE[x[1]]
+                    for x in it.product(BASES, BASES)
+                    if x[0] != x[1]}
+# SNPS we want to keep (pairs of alleles)
+VALID_SNPS = {x for x in map(lambda y: ''.join(y), it.product(BASES, BASES))
+              if x[0] != x[1] and not STRAND_AMBIGUOUS[x]}
+# T iff SNP 1 has the same alleles as SNP 2 (allowing for strand or ref allele flip).
+MATCH_ALLELES = {x for x in map(lambda y: ''.join(y), it.product(VALID_SNPS, VALID_SNPS))
+                 # strand and ref match
+                 if ((x[0] == x[2]) and (x[1] == x[3])) or
+                 # ref match, strand flip
+                 ((x[0] == COMPLEMENT_ALLELE[x[2]]) and (x[1] == COMPLEMENT_ALLELE[x[3]])) or
+                 # ref flip, strand match
+                 ((x[0] == x[3]) and (x[1] == x[2])) or
+                 ((x[0] == COMPLEMENT_ALLELE[x[3]]) and (x[1] == COMPLEMENT_ALLELE[x[2]]))}  # strand and ref flip
+# T iff SNP 1 has the same alleles as SNP 2 w/ ref allele flip.
+FLIP_ALLELES = {''.join(x):
+                ((x[0] == x[3]) and (x[1] == x[2])) or  # strand match
+                # strand flip
+                ((x[0] == COMPLEMENT_ALLELE[x[3]]) and (x[1] == COMPLEMENT_ALLELE[x[2]]))
+                for x in MATCH_ALLELES}
+
+def filter_alleles(alleles):
+    '''Remove bad variants (mismatched alleles, non-SNPs, strand ambiguous).'''
+    ii = alleles.apply(lambda y: y in MATCH_ALLELES)
+    return ii
+
+
+def align_alleles(z, alleles):
+    '''Align Z1 and Z2 to same choice of ref allele (allowing for strand flip).'''
+    try:
+        z *= (-1) ** alleles.apply(lambda y: FLIP_ALLELES[y])
+    except KeyError as e:
+        raise KeyError('Incompatible alleles. ')
+    return z
 
 Cols = namedtuple('Cols', ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'N', 'NCAS', 'NCON', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS'])
 cols = Cols._make(        ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'N', 'NCAS', 'NCON', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS'])
@@ -177,7 +222,7 @@ def format_chr(chrvec):
 def print_header(fh, lines=5):
     (openfunc, _) = get_compression(fh)
     with openfunc(fh) as f:
-        for line in itertools.islice(f, lines):
+        for line in it.islice(f, lines):
             line = line if isinstance(line, six.string_types) else line.decode('utf-8')
             print(line.rstrip('\n'))
 
