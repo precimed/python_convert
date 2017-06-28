@@ -41,6 +41,8 @@ def parse_args(args):
         help="How many chunks to output into the output (debug option to preview large files that take long time to parse)")
     parser_csv.add_argument("--sep", default='\s+', type=str, choices=[',', ';', '\t', ' '],
         help="Delimiter to use (',' ';' $' ' or $'\\t'). By default uses delim_whitespace option in pandas.read_table.")
+    parser_csv.add_argument("--all-snp-info-23-and-me", default=None, type=str,
+        help="all_snp_info file for summary stats in 23-and-me format")
     parser_csv.set_defaults(func=make_csv)
 
     parser_mat = subparsers.add_parser("mat", help="Create mat files that can "
@@ -222,6 +224,7 @@ def make_csv(args):
     Based on file with summary statistics creates a tab-delimited csv file with standard columns.
     """
     check_input_file(args.sumstats_file)
+    if args.all_snp_info_23_and_me: check_input_file(args.all_snp_info_23_and_me)
     set_clean_args_cnames(vars(args))
     check_output_file(args.output_file, args.force)
 
@@ -229,9 +232,14 @@ def make_csv(args):
     if args.head > 0: print_header(args.sumstats_file, lines=args.head)
 
     reader = pd.read_table(args.sumstats_file, dtype=str, sep=args.sep, chunksize=args.chunksize)
+    reader_23_and_me = pd.read_table(args.all_snp_info_23_and_me, dtype=str, sep=args.sep, chunksize=args.chunksize) if args.all_snp_info_23_and_me else None
     n_snps = 0
     with open(args.output_file, 'a') as out_f:
         for chunk_index, chunk in enumerate(reader):
+            if reader_23_and_me:
+                chunk = pd.concat([chunk, next(reader_23_and_me)], axis=1)
+                chunk = chunk.loc[:, ~chunk.columns.duplicated()]
+
             original_file_cname = chunk.columns
             set_clean_file_cnames(chunk)
 
@@ -260,6 +268,11 @@ def make_csv(args):
             if cols.CHRPOS in chunk.columns:
                 chunk[cols.CHR], chunk[cols.BP] = chunk[cols.CHRPOS].str.split(':', 1).str
                 chunk.drop(cols.CHRPOS, axis=1, inplace=True)
+
+            # Split A1/A2 column into two
+            if cols.A1A2 in chunk.columns:
+                chunk[cols.A1], chunk[cols.A2] = chunk[cols.A1A2].str.split('/', 1).str
+                chunk.drop(cols.A1A2, axis=1, inplace=True)
 
             # Ensure standard labels in CHR column
             if cols.CHR in chunk.columns:

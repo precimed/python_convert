@@ -149,17 +149,13 @@ def format_chr(chrvec):
     '''
     try:
         tmpchrvec = chrvec.astype('str')
-        tmpchrvec[tmpchrvec=='X'] = '23'
+        tmpchrvec = tmpchrvec.str.lower()
+        tmpchrvec = tmpchrvec.str.replace('chr', '')
         tmpchrvec[tmpchrvec=='x'] = '23'
-        tmpchrvec[tmpchrvec=='Y'] = '24'
         tmpchrvec[tmpchrvec=='y'] = '24'
-        tmpchrvec[tmpchrvec=='PAR'] = '25'
         tmpchrvec[tmpchrvec=='par'] = '25'
-        tmpchrvec[tmpchrvec=='M'] = '26'
         tmpchrvec[tmpchrvec=='m'] = '26'
-        tmpchrvec[tmpchrvec=='MT'] = '26'
         tmpchrvec[tmpchrvec=='mt'] = '26'
-        tmpchrvec = tmpchrvec.str.replace('[chrCHR]', '', case=False)
         # TO-DO: Bellow is anoying
         tmpchrvec[tmpchrvec=='NA'] = '-9'
         tmpchrvec[tmpchrvec.isnull()] = '-9'

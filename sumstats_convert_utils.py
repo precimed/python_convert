@@ -51,8 +51,8 @@ def align_alleles(z, alleles):
         raise KeyError('Incompatible alleles. ')
     return z
 
-Cols = namedtuple('Cols', ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'N', 'NCAS', 'NCON', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS'])
-cols = Cols._make(        ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'N', 'NCAS', 'NCON', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS'])
+Cols = namedtuple('Cols', ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'N', 'NCAS', 'NCON', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2'])
+cols = Cols._make(        ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'N', 'NCAS', 'NCON', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2'])
 
 null_values = {
     cols.LOGODDS: 0,
@@ -167,6 +167,7 @@ describe_cname = {
     cols.NSTUDY: 'Number of studies in which the SNP was genotyped.',
     'UNKNOWN': 'Unknown column type (will be skipped).',
     cols.CHRPOS: 'chr:pos column with colon-separated information about Chromosome and Base-pair position',
+    cols.A1A2: 'A1/A2 column with slash-separated information about marker allles',
 }
 
 def clean_header(header):
@@ -198,19 +199,15 @@ def format_chr(chrvec):
     '''
     try:
         tmpchrvec = chrvec.astype('str')
-        tmpchrvec[tmpchrvec=='X'] = '23'
+        tmpchrvec = tmpchrvec.str.lower()
+        tmpchrvec = tmpchrvec.str.replace('chr', '')
         tmpchrvec[tmpchrvec=='x'] = '23'
-        tmpchrvec[tmpchrvec=='Y'] = '24'
         tmpchrvec[tmpchrvec=='y'] = '24'
-        tmpchrvec[tmpchrvec=='PAR'] = '25'
         tmpchrvec[tmpchrvec=='par'] = '25'
-        tmpchrvec[tmpchrvec=='M'] = '26'
         tmpchrvec[tmpchrvec=='m'] = '26'
-        tmpchrvec[tmpchrvec=='MT'] = '26'
         tmpchrvec[tmpchrvec=='mt'] = '26'
-        tmpchrvec = tmpchrvec.str.replace('[chrCHR]', '', case=False)
         # TO-DO: Bellow is anoying
-        tmpchrvec[tmpchrvec=='NA'] = '-9'
+        tmpchrvec[tmpchrvec=='na'] = '-9'
         tmpchrvec[tmpchrvec.isnull()] = '-9'
         tmpchrvec[tmpchrvec=='nan'] = '-9'
         tmpchrvec[tmpchrvec==' '] = '-9'
