@@ -12,6 +12,7 @@ import argparse
 import six
 from sumstats_convert_utils import *
 import collections
+import re
 from shutil import copyfile
 import zipfile
 import glob
@@ -46,6 +47,14 @@ def parse_args(args):
     parser_csv.add_argument("--all-snp-info-23-and-me", default=None, type=str,
         help="all_snp_info file for summary stats in 23-and-me format")
     parser_csv.set_defaults(func=make_csv)
+
+    parser_qc = subparsers.add_parser("qc", help="Miscellaneous quality control and filtering procedures")
+    parser_qc.add_argument("sumstats_file", type=str, help="Input file with summary statistics")
+    parser_qc.add_argument("output_file", type=str, help="Output csv file.")
+    parser_qc.add_argument("--force", action="store_true", default=False, help="Force overwrite target file if it exist.")
+    parser_qc.add_argument("--chunksize", default=100000, type=int, help="Size of chunk to read the file.")
+    parser_qc.add_argument("--exclude-ranges", type=str, nargs='+', help="Exclude SNPs in ranges of base pair position, for example MHC. The syntax is chr:from-to, for example 6:25000000-35000000. Multiple regions can be excluded.")
+    parser_qc.set_defaults(func=make_qc)
 
     parser_mat = subparsers.add_parser("mat", help="Create mat files that can "
         "be used as an input for cond/conj FDR and for CM3 model.")
@@ -298,6 +307,41 @@ def make_csv(args):
                 break
 
         print("{n} SNPs saved to {f}".format(n=n_snps, f=args.output_file))
+
+### =================================================================================
+###                          Implementation for parser_qc
+### ================================================================================= 
+def make_qc(args):
+    check_input_file(args.sumstats_file)
+    check_output_file(args.output_file, args.force)
+
+    # Interpret --exclude-ranges input
+    ChromosomeRange = collections.namedtuple('ChromosomeRange', ['chr', 'from_bp', 'to_bp'])
+    exclude_ranges = []
+    if args.exclude_ranges is not None:
+        for exclude_range in args.exclude_ranges:
+            try:
+                range = ChromosomeRange._make([int(x) for x in exclude_range.replace(':', ' ').replace('-', ' ').split()[:3]])
+            except Exception as e:
+                raise(ValueError('Unable to interpret exclude range "{}", chr:from-to format is expected.'.format(exclude_range)))
+            exclude_ranges.append(range)
+            print('Exclude SNPs on chromosome {} from BP {} to {}'.format(range.chr, range.from_bp, range.to_bp))
+
+    reader = pd.read_table(args.sumstats_file, sep='\t', chunksize=args.chunksize)
+    n_snps = 0
+    with open(args.output_file, 'a') as out_f:
+        for chunk_index, chunk in enumerate(reader):
+            for range in exclude_ranges:
+                idx = (chunk[cols.CHR] == range.chr) & (chunk[cols.BP] >= range.from_bp) & (chunk[cols.BP] < range.to_bp)
+                if idx.sum() > 0:
+                    print('Exclude {} SNPs in range {}:{}-{}'.format(idx.sum(), range.chr, range.from_bp, range.to_bp))
+                    chunk = chunk[~idx].copy()
+
+            chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA')
+            n_snps += len(chunk)
+            print("{n} lines processed".format(n=(chunk_index+1)*args.chunksize))
+    print("{n} SNPs saved to {f}".format(n=n_snps, f=args.output_file))
+
 
 ### =================================================================================
 ###                          Implementation for parser_mat
