@@ -31,6 +31,8 @@ def parse_args(args):
 
     parser_csv.add_argument("--auto", action="store_true", default=False,
         help="Auto-detect column types based on a set of standard column names.")
+    parser_csv.add_argument("--ignore", type=str, nargs='+',
+        help="List of column names in the original file to ignore during auto-detection")
     parser_csv.add_argument("--chunksize", default=100000, type=int,
         help="Size of chunk to read the file.")
     parser_csv.add_argument("--force", action="store_true", default=False,
@@ -195,6 +197,10 @@ def find_auto_cnames(args, clean_file_cnames):
         
         # Ignore default cname if user took the column for something else
         if clean_header(default_cname) in user_args:
+            continue
+
+        # Ignore default cname if user explicitly asked to ignore it
+        if args['ignore'] and (clean_header(default_cname) in [clean_header(x) for x in args['ignore']]):
             continue
 
         args[cname.lower()] = clean_header(default_cname)
