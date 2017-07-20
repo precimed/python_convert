@@ -206,6 +206,9 @@ def format_chr(chrvec):
         tmpchrvec[tmpchrvec=='par'] = '25'
         tmpchrvec[tmpchrvec=='m'] = '26'
         tmpchrvec[tmpchrvec=='mt'] = '26'
+        tmpchrvec[tmpchrvec=='x_par1'] = '25'
+        tmpchrvec[tmpchrvec=='x_par2'] = '25'
+        tmpchrvec[tmpchrvec=='x_nonpar'] = '23'
         # TO-DO: Bellow is anoying
         tmpchrvec[tmpchrvec=='na'] = '-9'
         tmpchrvec[tmpchrvec.isnull()] = '-9'
