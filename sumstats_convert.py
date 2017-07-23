@@ -431,7 +431,7 @@ def make_qc(args, log):
 ###                          Implementation for parser_mat
 ### ================================================================================= 
 def get_str_list_sign(str_list):
-    return np.array([-1 if e[0]=='-' else 1 for e in str_list], dtype=np.int)
+    return np.array([-1 if e[0]=='-' else 1 for e in list(str_list)], dtype=np.int)
 
 _base_complement = {"A":"T", "C":"G", "G":"C", "T":"A"}
 def _complement(seq):
