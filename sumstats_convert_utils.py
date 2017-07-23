@@ -51,8 +51,8 @@ def align_alleles(z, alleles):
         raise KeyError('Incompatible alleles. ')
     return z
 
-Cols = namedtuple('Cols', ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'N', 'NCAS', 'NCON', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2'])
-cols = Cols._make(        ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'N', 'NCAS', 'NCON', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2'])
+Cols = namedtuple('Cols', ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'N', 'NCASE', 'NCONTROL', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2'])
+cols = Cols._make(        ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'N', 'NCASE', 'NCONTROL', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2'])
 
 null_values = {
     cols.LOGODDS: 0,
@@ -109,17 +109,17 @@ default_cnames = {
     'NEA': cols.A2,
     # N
     'N': cols.N,
-    'NCASE': cols.NCAS,
-    'CASES_N': cols.NCAS,
-    'N_CASE': cols.NCAS,
-    'N_CASES': cols.NCAS,
-    'N_CONTROLS': cols.NCON,
-    'N_CAS': cols.NCAS,
-    'N_CON': cols.NCON,
-    'N_CASE': cols.NCAS,
-    'NCONTROL': cols.NCON,
-    'CONTROLS_N': cols.NCON,
-    'N_CONTROL': cols.NCON,
+    'NCASE': cols.NCASE,
+    'CASES_N': cols.NCASE,
+    'N_CASE': cols.NCASE,
+    'N_CASES': cols.NCASE,
+    'N_CONTROLS': cols.NCONTROL,
+    'N_CAS': cols.NCASE,
+    'N_CON': cols.NCONTROL,
+    'N_CASE': cols.NCASE,
+    'NCONTROL': cols.NCONTROL,
+    'CONTROLS_N': cols.NCONTROL,
+    'N_CONTROL': cols.NCONTROL,
     'WEIGHT': cols.N,  # metal does this. possibly risky.
     # SIGNED STATISTICS
     'ZSCORE': cols.Z,
@@ -154,8 +154,8 @@ describe_cname = {
     cols.A1: 'Allele 1, interpreted as ref allele for signed sumstat.',
     cols.A2: 'Allele 2, interpreted as non-ref allele for signed sumstat.',
     cols.N: 'Sample size',
-    cols.NCAS: 'Number of cases',
-    cols.NCON: 'Number of controls',
+    cols.NCASE: 'Number of cases',
+    cols.NCONTROL: 'Number of controls',
     cols.Z: 'Z-score (0 --> no effect; above 0 --> A1 is trait/risk increasing)',
     cols.OR: 'Odds ratio (1 --> no effect; above 1 --> A1 is risk increasing)',
     cols.BETA: '[linear/logistic] regression coefficient (0 --> no effect; above 0 --> A1 is trait/risk increasing)',
@@ -219,12 +219,14 @@ def format_chr(chrvec):
     except:
         raise
 
-def print_header(fh, lines=5):
+def get_header(fh, lines=5):
     (openfunc, _) = get_compression(fh)
+    header = []
     with openfunc(fh) as f:
         for line in it.islice(f, lines):
             line = line if isinstance(line, six.string_types) else line.decode('utf-8')
-            print(line.rstrip('\n'))
+            header.append(line.rstrip('\n'))
+    return header
 
 def get_compression_and_open(fh):
     (openfunc, _) = get_compression(fh)
