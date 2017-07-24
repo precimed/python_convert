@@ -43,8 +43,8 @@ def parse_args(args):
         'Unrecognized columns are removed from the summary statistics file. '
         'The remaining utilities in sumstats_convert.py work with summary statistics files in the standardized format.')
 
-    parser_csv.add_argument("--sumstats", type=str, help="Raw input file with summary statistics.")
-    parser_csv.add_argument("--out", type=str, help="File to output the result.")
+    parser_csv.add_argument("--sumstats", type=str, help="[required] Raw input file with summary statistics.")
+    parser_csv.add_argument("--out", type=str, help="[required] File to output the result.")
     parser_csv.add_argument("--force", action="store_true", default=False, help="Allow sumstats_convert.py to overwrite output file if it exists.")
 
     # Generate parameters from describe_cname.
@@ -74,8 +74,8 @@ def parse_args(args):
     parser_qc = subparsers.add_parser("qc",
         help="Miscellaneous quality control and filtering procedures")
 
-    parser_qc.add_argument("--sumstats", type=str, help="Input file with summary statistics in standardized format")
-    parser_qc.add_argument("--out", type=str, help="File to output the result.")
+    parser_qc.add_argument("--sumstats", type=str, help="[required] Input file with summary statistics in standardized format")
+    parser_qc.add_argument("--out", type=str, help="[required] File to output the result.")
     parser_qc.add_argument("--force", action="store_true", default=False, help="Allow sumstats_convert.py to overwrite output file if it exists.")
 
     parser_qc.add_argument("--chunksize", default=100000, type=int,
@@ -96,12 +96,11 @@ def parse_args(args):
         "which auguments summary statistics with SNP column (first run 'sumstats_convert.py rs ...', "
         "then feed the resulting file into sumstats_convert.py mat ...)")
 
-    parser_mat.add_argument("--sumstats", type=str, help="Input file with summary statistics in standardized format.")
-    parser_mat.add_argument("--out", type=str, help="File to output the result. File should end with .mat extension.")
+    parser_mat.add_argument("--sumstats", type=str, help="[required] Input file with summary statistics in standardized format.")
+    parser_mat.add_argument("--ref", type=str, help="[required] Tab-separated file with list of referense SNPs.")
+    parser_mat.add_argument("--out", type=str, help="[required] File to output the result. File should end with .mat extension.")
     parser_mat.add_argument("--force", action="store_true", default=False, help="Allow sumstats_convert.py to overwrite output file if it exists.")
 
-    parser_mat.add_argument("--ref", type=str,
-        help="Tab-separated file with list of referense SNPs.")
     parser_mat.add_argument("--trait", type=str, default='',
         help="Trait name that will be used in mat file. Can be kept empty, in this case the variables will be named 'logpvec', 'zvec' and 'nvec'")
     parser_mat.add_argument("--effect", default=None, type=str, choices=['BETA', 'OR', 'Z', 'LOGODDS'],
@@ -118,8 +117,8 @@ def parse_args(args):
         "and/or liftover chr:pos to another genomic build using UCSC chain files. "
         "WARNING: this utility may use excessive amount of memory (up and beyong 32 GB of RAM).")
 
-    parser_lift.add_argument("--sumstats", type=str, help="Input file with summary statistics in standardized format")
-    parser_lift.add_argument("--out", type=str, help="File to output the result.")
+    parser_lift.add_argument("--sumstats", type=str, help="[required] Input file with summary statistics in standardized format")
+    parser_lift.add_argument("--out", type=str, help="[required] File to output the result.")
     parser_lift.add_argument("--force", action="store_true", default=False, help="Allow sumstats_convert.py to overwrite output file if it exists.")
 
     parser_lift.add_argument("--chain-file", default=None, type=str,
@@ -143,12 +142,11 @@ def parse_args(args):
         help="Augument summary statistic file with SNP RS number from reference file. "
         "Merging is done on chromosome and position.")
 
-    parser_rs.add_argument("--sumstats", type=str, help="Input file with summary statistics in standardized format")
-    parser_rs.add_argument("--out", type=str, help="File to output the result.")
+    parser_rs.add_argument("--sumstats", type=str, help="[required] Input file with summary statistics in standardized format")
+    parser_rs.add_argument("--ref", type=str, help="[required] Tab-separated file with list of referense SNPs.")
+    parser_rs.add_argument("--out", type=str, help="[required] File to output the result.")
     parser_rs.add_argument("--force", action="store_true", default=False, help="Allow sumstats_convert.py to overwrite output file if it exists.")
 
-    parser_rs.add_argument("--ref", type=str,
-        help="Tab-separated file with list of referense SNPs.")
     parser_rs.add_argument("--chunksize", default=100000, type=int,
         help="Size of chunk to read the file.")
     parser_rs.set_defaults(func=make_rs)
@@ -158,11 +156,10 @@ def parse_args(args):
         help="Report information about standard sumstat files, "
         "including the set of columns available, number of SNPs, etc.")
 
-    parser_ls.add_argument("--out", type=str, help="File to output the result.")
+    parser_ls.add_argument("--path", type=str, help="[required] File or regular expresion of the files to include in the report.")
+    parser_ls.add_argument("--out", type=str, help="[required] File to output the result.")
     parser_ls.add_argument("--force", action="store_true", default=False, help="Allow sumstats_convert.py to overwrite output file if it exists.")
 
-    parser_ls.add_argument("--path", type=str,
-        help="File or regular expresion of the files to include in the report.")
     parser_ls.add_argument("--snp", action="store_true", default=False,
         help="Include information about how many SNPs are there in the file. "
         "This option is slow because causes a complete scan of all input files.")
@@ -172,12 +169,11 @@ def parse_args(args):
     parser_mattocsv = subparsers.add_parser("mat-to-csv",
         help="Convert matlab .mat file with logpvec, zvec and (optionally) nvec into CSV files.")
 
-    parser_mattocsv.add_argument("--mat", type=str, help="Input mat file.")
-    parser_mattocsv.add_argument("--out", type=str, help="File to output the result.")
+    parser_mattocsv.add_argument("--mat", type=str, help="[required] Input mat file.")
+    parser_mattocsv.add_argument("--ref", type=str, help="[required] Tab-separated file with list of referense SNPs.")
+    parser_mattocsv.add_argument("--out", type=str, help="[required] File to output the result.")
     parser_mattocsv.add_argument("--force", action="store_true", default=False, help="Allow sumstats_convert.py to overwrite output file if it exists.")
 
-    parser_mattocsv.add_argument("--ref", type=str,
-        help="Tab-separated file with list of referense SNPs.")
     parser_mattocsv.add_argument("--na-rep", default='NA', type=str, choices=['NA', ''],
         help="Missing data representation.")
     parser_mattocsv.add_argument("--gzip", action="store_true", default=False,
@@ -189,11 +185,10 @@ def parse_args(args):
         help="Convert .sumstats, .ldscore, .M, .M_5_50 and "
         "binary .annot files from LD score regression to .mat files.")
 
-    parser_ldsctomat.add_argument("--out", type=str, help="File to output the result.")
+    parser_ldsctomat.add_argument("--ref", type=str, help="[required] Tab-separated file with list of referense SNPs.")
+    parser_ldsctomat.add_argument("--out", type=str, help="[required] File to output the result.")
     parser_ldsctomat.add_argument("--force", action="store_true", default=False, help="Allow sumstats_convert.py to overwrite output file if it exists.")
 
-    parser_ldsctomat.add_argument("--ref", type=str,
-        help="Tab-separated file with list of referense SNPs.")
     parser_ldsctomat.add_argument("--sumstats", type=str, default=None,
         help="Name of .sumstats.gz file")
     parser_ldsctomat.add_argument("--ldscore", type=str, default=None,
@@ -211,15 +206,12 @@ def parse_args(args):
         help="Compare two .mat files with logpvec, zvec and nvec, "
         "and report the differences.")
 
-    parser_diffmat.add_argument("--out", type=str, help="File to output the result.")
+    parser_diffmat.add_argument("--mat1", type=str, default=None, help="[required] Name of the first .mat file")
+    parser_diffmat.add_argument("--mat2", type=str, default=None, help="[required] Name of the second .mat file")
+    parser_diffmat.add_argument("--ref", type=str, help="[required] Tab-separated file with list of referense SNPs.")
+    parser_diffmat.add_argument("--out", type=str, help="[required] File to output the result.")
     parser_diffmat.add_argument("--force", action="store_true", default=False, help="Allow sumstats_convert.py to overwrite output file if it exists.")
 
-    parser_diffmat.add_argument("--mat1", type=str, default=None,
-        help="Name of the first .mat file")
-    parser_diffmat.add_argument("--mat2", type=str, default=None,
-        help="Name of the second .mat file")
-    parser_diffmat.add_argument("--ref", type=str,
-        help="Tab-separated file with list of referense SNPs.")
     parser_diffmat.add_argument("--sumstats", type=str, default=None,
         help="Optionally, the name of the source summary statistics file in standardized .csv format. "
         "Assuming that both .mat files originate from this file diff-mat will produce output file "
