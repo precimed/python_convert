@@ -206,6 +206,26 @@ def parse_args(args):
         help="Name of .M_5_50 files, where symbol @ indicates chromosome index. Example: baseline.@.l2.M_5_50")
     parser_ldsctomat.set_defaults(func=ldsc_to_mat)
 
+    # 'diff-mat' utility: compare two .mat files with logpvec, zvec and nvec, and report the differences
+    parser_diffmat = subparsers.add_parser("diff-mat",
+        help="Compare two .mat files with logpvec, zvec and nvec, "
+        "and report the differences.")
+
+    parser_diffmat.add_argument("--out", type=str, help="File to output the result.")
+    parser_diffmat.add_argument("--force", action="store_true", default=False, help="Allow sumstats_convert.py to overwrite output file if it exists.")
+
+    parser_diffmat.add_argument("--mat1", type=str, default=None,
+        help="Name of the first .mat file")
+    parser_diffmat.add_argument("--mat2", type=str, default=None,
+        help="Name of the second .mat file")
+    parser_diffmat.add_argument("--ref", type=str,
+        help="Tab-separated file with list of referense SNPs.")
+    parser_diffmat.add_argument("--sumstats", type=str, default=None,
+        help="Optionally, the name of the source summary statistics file in standardized .csv format. "
+        "Assuming that both .mat files originate from this file diff-mat will produce output file "
+        "to help investigate where the differences came from.")
+    parser_diffmat.set_defaults(func=diff_mat)
+
     return parser.parse_args(args)
 
 ### =================================================================================
@@ -822,6 +842,120 @@ def ldsc_to_mat(args, log):
 
     sio.savemat(args.out, save_dict, format='5', do_compression=False, oned_as='column', appendmat=False)
     log.log('Result written to {f}'.format(f=args.out))
+
+### =================================================================================
+###                          Implementation for diff_mat
+### =================================================================================
+def diff_mat(args, log):
+    check_input_file(args.mat1)
+    check_input_file(args.mat2)
+    check_input_file(args.ref)
+    if args.sumstats: check_input_file(args.sumstats)
+    check_output_file(args.out, args.force)
+
+    def read_mat_file(filename, log):
+        log.log('Reading .mat file {}...'.format(filename))
+        mat = sio.loadmat(filename)
+        log.log('Found variables: {}'.format([x for x in mat.keys() if x not in ['__version__', '__header__', '__globals__']]))
+        nvec = None; zvec = None; logpvec = None
+        for key in mat.keys():
+            if key.lower().startswith('zvec'): zvec = mat[key]
+            if key.lower().startswith('logpvec'): logpvec = mat[key]
+            if key.lower().startswith('nvec'): nvec = mat[key]
+        return (zvec, logpvec, nvec)
+
+    def compare_vectors(v1, v2,  log):
+        s1 = v1 is not None
+        s2 = v2 is not None
+        log.log('\tIs present in the first  file? {}'.format('YES' if s1 else 'NO'))
+        log.log('\tIs present in the second file? {}'.format('YES' if s2 else 'NO'))
+        if not s1 or not s2: return (None, None)
+
+        s1 = len(v1); s2 = len(v2)
+        log.log('\tHave equal length in both files? {}'.format('YES, {}'.format(s1) if s1==s2 else 'NO, {} vs {}'.format(s1, s2)))
+        if s1 != s2: return (None, None)
+
+        s = all(np.isnan(v1) == np.isnan(v2))
+        log.log('\tHave equal pattern of defined values? {}'.format('YES' if s else 'NO'))
+
+        if not s:
+            s1 = np.sum(np.isnan(v1)); s2 = np.sum(np.isnan(v2))
+            log.log('\t\tHave equal number of undefined values? {}'.format('YES, {}'.format(s1) if s1==s2 else 'NO, {} vs {} - difference is {}'.format(s1, s2, abs(s1-s2))))
+
+            s1 = np.sum(~np.isnan(v1) & np.isnan(v2))
+            s2 = np.sum(np.isnan(v1) & ~np.isnan(v2))
+            log.log('\t\tHow many values are defined in the first file but not in the second file? {}'.format(s1))
+            log.log('\t\tHow many values are defined in the second file but not in the first file? {}'.format(s2))
+
+        # Select values defined in both vectors
+        idx_def = ~np.isnan(v1) & ~np.isnan(v2)
+        def_v1 = v1[idx_def]
+        def_v2 = v2[idx_def]
+        idx_diff_sign = ((def_v1 <= 0) & (def_v2 > 0)) | ((def_v1 > 0) & (def_v2 <= 0))
+        idx_diff_value = np.greater(abs(def_v1 - def_v2), 1e-5)
+        log.log('\tAll defined values are equal in both files? {}'.format('YES' if all(def_v1 == def_v2) else 'NO, {} values are different'.format(np.sum(def_v1 != def_v2))))
+        if not all(def_v1 == def_v2):
+            s = np.sum(idx_diff_sign)
+            log.log('\t\tMean(Std) for the first  file? {} ({})'.format(np.mean(def_v1), np.std(def_v1)))
+            log.log('\t\tMean(Std) for the second file? {} ({})'.format(np.mean(def_v2), np.std(def_v2)))
+            log.log('\t\tAll values have equal sign? {}'.format('YES' if s == 0 else 'NO, {} values have different sign'.format(s)))
+            log.log('\t\tMaximum difference of absolute values? {}'.format(max(abs(abs(def_v1) - abs(def_v2)))))
+            log.log('\t\tNumber of values with absolute difference above 1e-5? {}'.format(sum(idx_diff_value)))
+
+        # Return index of SNPs that we consider to be different
+        # First vector, idx_diff_nan_or_sign, indicate where nan pattern is different or sign is different
+        # Second vector, idx_diff_nan_or_sign_or_value, indicates where nan pattern is different or sign is different or value is different
+        idx_diff_nan_or_sign = (np.isnan(v1) != np.isnan(v2))
+        idx_diff_nan_or_sign[idx_def] = idx_diff_sign
+        idx_diff_nan_or_sign_or_value = (np.isnan(v1) != np.isnan(v2))
+        idx_diff_nan_or_sign_or_value[idx_def] = idx_diff_value | idx_diff_sign
+        return (idx_diff_nan_or_sign, idx_diff_nan_or_sign_or_value)
+
+    [zvec1, logpvec1, nvec1] = read_mat_file(args.mat1, log)
+    [zvec2, logpvec2, nvec2] = read_mat_file(args.mat2, log)
+
+    log.log('{}:'.format('zvec'))
+    (zvec_diff, _) = compare_vectors(zvec1, zvec2, log)
+
+    log.log('{}:'.format('logpvec'))
+    (_, logpvec_diff) = compare_vectors(logpvec1, logpvec2, log)
+
+    log.log('{}:'.format('nvec'))
+    (_, nvec_diff) = compare_vectors(nvec1, nvec2, log)
+
+    diff = np.logical_or.reduce([diff for diff in [zvec_diff, logpvec_diff, nvec_diff] if diff is not None])
+    log.log('Overall, {} markers appears to be different.'.format(np.sum(diff)))
+
+    if np.sum(diff) == 0:
+        open(args.out, 'a').close()
+        return
+
+    log.log('Reading reference file {}...'.format(args.ref))
+    ref = pd.read_table(args.ref, sep='\t', usecols=[cols.SNP, cols.CHR, cols.BP])
+    log.log("Reference dict contains {d} snps.".format(d=len(ref)))
+
+    # Insert not-null vectors into the data frame
+    vectors = {'zvec1':zvec1, 'zvec2':zvec2, 'logpvec1':logpvec1, 'logpvec2':logpvec2, 'nvec1':nvec1, 'nvec2':nvec2}
+    for k in vectors:
+        if (vectors[k] is not None) and (len(vectors[k]) == len(ref)):
+            ref[k] = vectors[k]
+    ref = ref.loc[[i for i, x in enumerate(diff) if x]]
+
+    if args.sumstats:
+        log.log('Reading sumstats file {}...'.format(args.sumstats))
+        sumstats = pd.read_table(args.sumstats, sep='\t')
+        log.log("Sumstats file contains {d} markers.".format(d=len(sumstats)))
+
+        sumstats_cols = sumstats.columns
+        if cols.SNP in sumstats_cols:
+            sumstats.columns = [(x + '_onSNP' if x != 'SNP' else x) for x in sumstats_cols]
+            ref = pd.merge(ref, sumstats, how='left', on='SNP')
+        if cols.CHR in sumstats_cols and cols.BP in sumstats_cols:
+            sumstats.columns = [(x + '_onCHRPOS' if x not in ['CHR', 'BP'] else x) for x in sumstats_cols]
+            ref = pd.merge(ref, sumstats, how='left', on=['CHR', 'BP'])
+
+    ref.to_csv(args.out, sep='\t', index=False, na_rep='NA')
+    log.log('Result is written into {}'.format(args.out))
 
 ### =================================================================================
 ###                                Misc stuff and helpers
