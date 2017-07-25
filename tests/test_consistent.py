@@ -12,8 +12,8 @@ def execute_command(command):
 def run(filename, matfile, effect):
     reffile = r'tests/1234_ref.bim'
     if os.path.isdir('TEMP_FOLDER'): shutil.rmtree('TEMP_FOLDER')
-    execute_command(r'python sumstats_convert.py csv {} TEMP_FOLDER/TEST.csv --auto --force'.format(filename))
-    execute_command(r'python sumstats_convert.py mat {} TEMP_FOLDER/TEST.csv --force --effect {}'.format(reffile, effect))
+    execute_command(r'python sumstats.py csv {} TEMP_FOLDER/TEST.csv --auto --force'.format(filename))
+    execute_command(r'python sumstats.py mat {} TEMP_FOLDER/TEST.csv --force --effect {}'.format(reffile, effect))
 
     f1 = sio.loadmat(matfile)
     f2 = sio.loadmat('TEMP_FOLDER/TEST.mat')
