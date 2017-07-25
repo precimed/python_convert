@@ -1,85 +1,80 @@
-# Python tools to work with summary statistics
+# A collection of various utilities for GWAS summary statistics.
 
-## sumStats2ref.py 
-Python tool to load in raw summary statistics and align them to 2.5M or 9M SNPs template.
+## sumstats.py
+
+sumstats.py utility allows you to read raw summary statistics files
+and convert them into a standardized format:
+tab-separated file with standard
+column names, standard chromosome labels,
+NA label for missing data, etc.
+This file can be further 
+loaded into matlab format,
+processed by various quality control procedures,
+aligned to a set of reference markers,
+lifted across genomic builds or versions of SNPdb.
 
 ```
-python sumStats2ref.py --help
-usage: Preprocess Summary stats [-h] [-F F] [-Ref REF] [-T T] [-O O]
-                                [--forceID] [--snpCol SNPCOL] [--pCol PCOL]
-                                [--effACol EFFACOL] [--othACol OTHACOL]
-                                [--effCol EFFCOL] [--orCol ORCOL]
-                                [--posCol POSCOL] [--chrCol CHRCOL]
+usage: sumstats.py [-h]
+                   {csv,qc,mat,lift,rs,ls,mat-to-csv,ldsc-to-mat,diff-mat} ...
 
-Preprocess summary stats for matlab
+A collection of various utilities for GWAS summary statistics.
+
+positional arguments:
+  {csv,qc,mat,lift,rs,ls,mat-to-csv,ldsc-to-mat,diff-mat}
+    csv                 Load raw summary statistics file and convert it into a
+                        standardized format: tab-separated file with standard
+                        column names, standard chromosome labels, NA label for
+                        missing data, etc. The conversion does not change the
+                        number of lines in the input files (e.g. no filtering
+                        is done on markers). Unrecognized columns are removed
+                        from the summary statistics file. The remaining
+                        utilities in sumstats.py work with summary statistics
+                        files in the standardized format.
+    qc                  Miscellaneous quality control and filtering procedures
+    mat                 Create mat files that can be used as an input for
+                        cond/conj FDR and for CM3 model. Takes csv files
+                        (created with the csv task of this script). Require
+                        columns: SNP, P, and one of the signed summary
+                        statistics columns (BETA, OR, Z, LOGODDS). Creates
+                        corresponding mat files which can be used as an input
+                        for the conditional fdr model. Only SNPs from the
+                        reference file are considered. Zscores of strand
+                        ambiguous SNPs are set to NA. To use CHR:POS for
+                        merging summary statistics with reference file
+                        consider 'rs' utility which auguments summary
+                        statistics with SNP column (first run 'sumstats.py rs
+                        ...', then feed the resulting file into sumstats.py
+                        mat ...)
+    lift                Lift RS numbers to a newer version of SNPdb, and/or
+                        liftover chr:pos to another genomic build using UCSC
+                        chain files. WARNING: this utility may use excessive
+                        amount of memory (up and beyong 32 GB of RAM).
+    rs                  Augument summary statistic file with SNP RS number
+                        from reference file. Merging is done on chromosome and
+                        position.
+    ls                  Report information about standard sumstat files,
+                        including the set of columns available, number of
+                        SNPs, etc.
+    mat-to-csv          Convert matlab .mat file with logpvec, zvec and
+                        (optionally) nvec into CSV files.
+    ldsc-to-mat         Convert .sumstats, .ldscore, .M, .M_5_50 and binary
+                        .annot files from LD score regression to .mat files.
+    diff-mat            Compare two .mat files with logpvec, zvec and nvec,
+                        and report the differences.
 
 optional arguments:
-  -h, --help         show this help message and exit
-  -F F               Summary stats file (default: None)
-  -Ref REF           Reference file (default: None)
-  -T T               Trait Name (default: None)
-  -O O               Output DIR (default: .)
-  --forceID          Force using SNP ID other than position (default: False)
-  --snpCol SNPCOL    SNP ID field (default: SNP)
-  --pCol PCOL        P value field (default: P)
-  --effACol EFFACOL  Effective allele field (default: None)
-  --othACol OTHACOL  The other allele field (default: None)
-  --effCol EFFCOL    Effect size field (default: None)
-  --orCol ORCOL      Odds ratio field (default: None)
-  --posCol POSCOL    Genomic position field (default: None)
-  --chrCol CHRCOL    Chromosome field (default: None)
-==============================================================================
+  -h, --help            show this help message and exit
 ```
 
-Conversion on 2.5M SNPs template
+For more information about each command call ``sumstats.py <command> --help``.
 
+Examples:
 ```
-python sumStats2ref.py -F "CHARGE_general_cognitive_function_summary_results" -Ref 2558411_ref.bim -T COG_CHARGE -O COG_CHARGE --snpCol MarkerName --pCol P --effACol Effect_Allele --othACol Non_eff_Allele --effCol Beta 
-```
-
-Conversion on 9M SNPs template
-```
-python sumStats2ref.py -F "CHARGE_general_cognitive_function_summary_results" -Ref 9279485_ref.bim -T COG_CHARGE -O COG_CHARGE_9m --snpCol MarkerName --pCol P --effACol Effect_Allele --othACol Non_eff_Allele --effCol Beta 
+python $(python_convert)/sumstats.py csv --sumstats scz2.snp.results.txt.gz --out PGC_SCZ_2014.csv --force --auto --head 5 --chr hg19chrc
+python $(python_convert)/sumstats.py mat --sumstats PGC_SCZ_2014.csv --out PGC_SCZ_2014.mat --ref 2558411_ref.bim --force
 ```
 
-
-## sumstats_convert (by @interCM )
-
-A python tool to convert files with summary statistics into mat files that can
-be used as an input for cond/conj FDR as well as for CM3 model.
-The process has 2 stages. At the first stage an intermediate csv file is created
-which contains 3 columns: snpid, pvalue, zscores. At the second stage this csv
-file is used to construct a mat file with p-values and z scores restricted and
-ordered according to the provided reference file. Produced mat file can be used
-as an input for cond/conj FDR and CM3 models.
-
-Compared to `sumStats2ref.py`, the `sumstats_convert` script has lower memory usage.
-
-### Example of usage
-
-1st stage. Create intermediate csv file:
-```
-python sumstats_convert.py csv \
-../data/ssgac/EduYears_Main.txt.gz \
-../projects/adhd/cond_fdr/2m_template/2558411_ref.bim \
-../tmp/ssgac_eduyears_2m.csv \
---id MarkerName --effect Beta --pval  Pval --effectA A1 --otherA A2 \
---signed-effect --ref-id SNP --ref-a1 A1 --ref-a2 A2
-```
-
-2nd stage. Create mat file using csv file created at the first stage:
-```
-python sumstats_convert.py mat \
-../projects/adhd/cond_fdr/2m_template/2558411_ref.bim \
-../tmp/ssgac_eduyears_2m.csv \
---ref-id SNP --traits eduyears_ssgac
-```
-
-For more details about available arguments use:
-```
-python sumstats_convert.py --help
-```
-
+Further examples can be found in [GWAS_SUMSTAT/Makefile](https://github.com/precimed/GWAS_SUMSTAT/blob/master/Makefile).
 
 ## make_ld_matrix
 
@@ -90,18 +85,3 @@ Example:
 python make_ld_matrix.py --ref 2558411_ref.bim --bfile g1000_eur --ld_window_r2 0.1 --savemat ldmat_p1.mat
 ```
 For more info see [make_ld_matrix](./make_ld_matrix/README.md).
-
-## Unit tests
-
-To run unit tests type `py.test` (staying at the root of this repository).
-```
-C:\Users\Oleksandr\Documents\GitHub\python_convert>py.test
-============================= test session starts =============================
-platform win32 -- Python 3.5.2, pytest-2.9.2, py-1.4.31, pluggy-0.3.1
-rootdir: C:\Users\Oleksandr\Documents\GitHub\python_convert, inifile:
-collected 2 items
-
-tests\test_consistent.py ..
-
-========================== 2 passed in 16.71 seconds ==========================
-```
