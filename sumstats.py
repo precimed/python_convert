@@ -596,7 +596,7 @@ def make_lift(args, log):
     if (args.snp_history is not None) and (cols.SNP in df):
         lift_rs = LiftRsNumbers(hist_file=args.snp_history, merge_file=args.rs_merge_arch)
 
-    if (args.snp_chrpos is not None) and (cols.SNP in df) and (cols.CHR in df) and (cols.BP in df):
+    if args.snp_chrpos is not None:
         log.log('Reading {}...'.format(args.snp_chrpos))
         snp_chrpos = pd.read_table(args.snp_chrpos, sep='\t', header=None, usecols=[0,1,2])
         snp_chrpos.columns=['snp_id','chr','pos'] #,'orien','neighbor_snp_list','isPAR']
@@ -610,29 +610,45 @@ def make_lift(args, log):
 
     indices_with_old_chrpos = range(len(df))  # indices with original chr:pos
     fixes = []
-    if cols.SNP in df:
-        if lift_rs is not None:
-            # Fix1 brings forward SNP rs# numbers and set SNP rs# to None for SNPs found in SNPHistory table
-            df[cols.SNP], stats = lift_rs.lift(df[cols.SNP])
-            fixes.append('{} rs# numbers has changed based on RsMergeArch table'.format(stats['lifted']))
-            log.log(stats)
+    if (cols.SNP in df) and (lift_rs is not None):
+        # Fix1 brings forward SNP rs# numbers and set SNP rs# to None for SNPs found in SNPHistory table
+        df[cols.SNP], stats = lift_rs.lift(df[cols.SNP])
+        fixes.append('{} rs# numbers has changed based on RsMergeArch table'.format(stats['lifted']))
+        log.log(stats)
 
-        if (snp_chrpos is not None) and (cols.CHR in df) and (cols.BP in df):
-            # Fix2 set chr:pos based on SNPChrPosOnRef table (only applies to SNPs with rs# number, not to other markers)
-            df['SNP_LIFTED'] = [(int(x[2:]) if (x and x.startswith('rs') and x[2:].isdigit()) else -1) for x in df[cols.SNP]]
-            df = pd.merge(df, snp_chrpos, how='left', left_on='SNP_LIFTED', right_on='snp_id')
-            log.log('Warning: there are {} SNPs with a valid RS number, but not found in SNPChrPosOnRef'.format(((df['SNP_LIFTED'] != -1) & df['snp_id'].isnull()).sum()))
+    if (cols.SNP in df) and (snp_chrpos is not None):
+        # Fix2 set chr:pos based on SNPChrPosOnRef table (only applies to SNPs with rs# number, not to other markers)
+        df['SNP_LIFTED'] = [(int(x[2:]) if (x and x.startswith('rs') and x[2:].isdigit()) else -1) for x in df[cols.SNP]]
+        df = pd.merge(df, snp_chrpos, how='left', left_on='SNP_LIFTED', right_on='snp_id')
+        log.log('Warning: there are {} SNPs with a valid RS number, but not found in SNPChrPosOnRef'.format(((df['SNP_LIFTED'] != -1) & df['snp_id'].isnull()).sum()))
 
+        if cols.CHR in df and cols.BP in df:
             idx = ((df['pos'] != df[cols.BP]) | (df['chr'] != df[cols.CHR])) & ~df['pos'].isnull() & ~df['chr'].isnull()
             df.ix[idx, cols.BP] = df.ix[idx, 'pos'].astype(int)
             df.ix[idx, cols.CHR] = df.ix[idx, 'chr'].astype(int)
             fixes.append('{} markers receive new CHR:POS based on SNPChrPosOnRef table'.format(idx.sum()))
+        else:
+            idx = ~df['pos'].isnull() & ~df['chr'].isnull()
+            df[cols.BP] = np.nan; df[cols.CHR] = np.nan
+            df.ix[idx, cols.BP] = df.ix[idx, 'pos'].astype(int)
+            df.ix[idx, cols.CHR] = df.ix[idx, 'chr'].astype(int)
+            fixes.append('{} markers receive CHR:POS based on SNPChrPosOnRef table'.format(idx.sum()))
 
-            indices_with_old_chrpos = [i for (i, b) in enumerate(df['pos'].isnull() | df['chr'].isnull()) if b]
-            df.drop(['SNP_LIFTED', 'snp_id', 'chr', 'pos'], axis=1, inplace=True)
+        indices_with_old_chrpos = [i for (i, b) in enumerate(df['pos'].isnull() | df['chr'].isnull()) if b]
+        df.drop(['SNP_LIFTED', 'snp_id', 'chr', 'pos'], axis=1, inplace=True)
 
-    if (lift_bp is not None) and (cols.CHR in df) and (cols.BP in df):
-        # Fix3 lifts chr:pos to another genomic build. This step is OFF by default, only applies if user provided chain file.
+    if (cols.CHR in df) and (cols.BP in df) and (cols.SNP not in df) and (snp_chrpos is not None):
+        # Fix3 set SNP rs# based on SNPChrPosOnRef table based on CHR:POS
+        df = pd.merge(df, snp_chrpos, how='left', left_on=[cols.CHR, cols.BP], right_on=['chr', 'pos'])
+        df['snp_id'][df['snp_id'].isnull()] = -1
+        df['snp_id'] = 'rs' + df['snp_id'].astype(int).astype(str)
+        df['snp_id'][df['snp_id'] == 'rs-1'] = None
+        df['SNP'] = df['snp_id']
+        fixes.append('{} markers receive SNP rs# based on SNPChrPosOnRef table'.format((~df[cols.SNP].isnull()).sum()))
+        df.drop(['snp_id', 'chr', 'pos'], axis=1, inplace=True)
+
+    if lift_bp is not None:
+        # Fix4 lifts chr:pos to another genomic build. This step is OFF by default, only applies if user provided chain file.
         # Note that lifting with pyliftover is rather slow, so we apply this step only to markers that are not in SNPChrPosOnRef table.
         log.log('Lift CHR:POS for {} SNPs to another genomic build...'.format(len(indices_with_old_chrpos)))
         unique = 0; multi = 0; failed = 0
@@ -658,16 +674,17 @@ def make_lift(args, log):
         fixes.append('{} markers receive new CHR:POS based on liftover chain files'.format(unique + multi))
 
     if not args.keep_bad_snps:
-        if lift_rs and (cols.SNP in df):
+        if cols.SNP in df:
             df_len = len(df)
-            df.dropna(subset=[cols.SNP], inplace=True)                  # Fix4 due to SNP being deleted from dbSNP
-            fixes.append("{n} markers were dropped based on SNPHistory table".format(n = df_len - len(df)))
+            df.dropna(subset=[cols.SNP], inplace=True)                  # Fix5 due to SNP being deleted from dbSNP
+            if len(df) < df_len:
+                fixes.append("{n} markers were dropped based on SNPHistory table and/or SNPChrPosOnRef table".format(n = df_len - len(df)))
 
         if (cols.CHR in df) and (cols.BP in df):
-            if lift_bp:
-                df_len = len(df)
-                df.dropna(subset=[cols.CHR, cols.BP], inplace=True)     # Fix5, due to failed liftover across genomic builds
-                fixes.append("{n} markers were dropped due to failed CHR:POS lift".format(n = df_len - len(df)))
+            df_len = len(df)
+            df.dropna(subset=[cols.CHR, cols.BP], inplace=True)     # Fix6, due to failed liftover across genomic builds
+            if len(df) < df_len:
+                fixes.append("{n} markers were dropped due to missing CHR:POS information or due to failed CHR:POS lift".format(n = df_len - len(df)))
             df[cols.CHR] = df[cols.CHR].astype(int)
             df[cols.BP] = df[cols.BP].astype(int)
 
