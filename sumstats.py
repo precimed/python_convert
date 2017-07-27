@@ -78,11 +78,15 @@ def parse_args(args):
     parser_qc.add_argument("--out", type=str, help="[required] File to output the result.")
     parser_qc.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
 
-    parser_qc.add_argument("--chunksize", default=100000, type=int,
-        help="Size of chunk to read the file.")
     parser_qc.add_argument("--exclude-ranges", type=str, nargs='+',
         help='Exclude SNPs in ranges of base pair position, for example MHC. '
         'The syntax is chr:from-to, for example 6:25000000-35000000. Multiple regions can be excluded.')
+    parser_qc.add_argument("--dropna-cols", type=str, nargs='+',
+        help='List of column names. SNPs with missing values in either of the columns will be excluded.')
+    parser_qc.add_argument("--fix-dtype-cols", type=str, nargs='+',
+        help='List of column names. Ensure appropriate data type for the columns (CHR, BP - int, PVAL - float, etc)')
+    parser_qc.add_argument("--max-or", type=float, default=None,
+        help='Filter SNPs with OR (odds ratio) exceeding specified threshold')
     parser_qc.set_defaults(func=make_qc)
 
     # 'mat' utility: load summary statistics into matlab format
@@ -423,21 +427,49 @@ def make_qc(args, log):
             exclude_ranges.append(range)
             log.log('Exclude SNPs on chromosome {} from BP {} to {}'.format(range.chr, range.from_bp, range.to_bp))
 
-    reader = pd.read_table(args.sumstats, sep='\t', chunksize=args.chunksize)
-    n_snps = 0
-    with open(args.out, 'a') as out_f:
-        for chunk_index, chunk in enumerate(reader):
-            for range in exclude_ranges:
-                idx = (chunk[cols.CHR] == range.chr) & (chunk[cols.BP] >= range.from_bp) & (chunk[cols.BP] < range.to_bp)
-                if idx.sum() > 0:
-                    log.log('Exclude {} SNPs in range {}:{}-{}'.format(idx.sum(), range.chr, range.from_bp, range.to_bp))
-                    chunk = chunk[~idx].copy()
+    if args.dropna_cols is None: args.dropna_cols = []
+    if args.fix_dtype_cols is None: args.fix_dtype_cols = []
 
-            chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA')
-            n_snps += len(chunk)
-            print("{f}: {n} lines processed".format(f=args.sumstats, n=(chunk_index+1)*args.chunksize))
-    log.log("{n} SNPs saved to {f}".format(n=n_snps, f=args.out))
+    if args.exclude_ranges is not None:
+        args.dropna_cols.extend(['CHR', 'BP'])
+        args.fix_dtype_cols.extend(['CHR', 'BP'])
+    if args.fix_dtype_cols is not None:
+         for col in args.fix_dtype_cols:
+            if cols_type_map[col] == int:
+                args.dropna_cols.append(col)
+    if args.max_or is not None:
+        args.fix_dtype_cols.append('OR')
 
+    log.log('Reading sumstats file {}...'.format(args.sumstats))
+    sumstats = pd.read_table(args.sumstats, sep='\t', dtype=str)
+    log.log("Sumstats file contains {d} markers.".format(d=len(sumstats)))
+
+    if len(args.dropna_cols) > 0:
+        sumstats_len = len(sumstats)
+        sumstats.dropna(subset=args.dropna_cols, inplace=True)
+        if len(sumstats) != sumstats_len: log.log('Drop {} markers because of missing values'.format(sumstats_len - len(sumstats)))
+    for col in args.fix_dtype_cols:
+        if col in sumstats:
+            log.log('Set column {} dtype to {}'.format(col, cols_type_map[col]))
+            if cols_type_map[col] == float or cols_type_map[col] == np.float64:
+                sumstats[col] = pd.to_numeric(sumstats[col], errors='coerce')
+                if col in args.dropna_cols:
+                    sumstats_len = len(sumstats)
+                    sumstats.dropna(subset=[col], inplace=True)
+                    if len(sumstats) != sumstats_len: log.log('Drop {} markers after dtype conversion'.format(sumstats_len - len(sumstats)))
+            else:
+                sumstats[col] = sumstats[col].astype(cols_type_map[col])
+    for range in exclude_ranges:
+        idx = (sumstats[cols.CHR] == range.chr) & (sumstats[cols.BP] >= range.from_bp) & (sumstats[cols.BP] < range.to_bp)
+        if idx.sum() > 0:
+            log.log('Exclude {} SNPs in range {}:{}-{}'.format(idx.sum(), range.chr, range.from_bp, range.to_bp))
+            sumstats = sumstats[~idx].copy()
+    if args.max_or is not None and cols.OR in sumstats:
+        sumstats_len = len(sumstats)
+        sumstats.drop(sumstats.OR > args.max_or, inplace=True)
+        if len(sumstats) != sumstats_len: log.log('Drop {} markers because OR exceeded threshold'.format(sumstats_len - len(sumstats)))
+    sumstats.to_csv(args.out, index=False, header=True, sep='\t', na_rep='NA')
+    log.log("{n} SNPs saved to {f}".format(n=len(sumstats), f=args.out))
 
 ### =================================================================================
 ###                          Implementation for parser_mat
@@ -1013,6 +1045,18 @@ class Logger(object):
         with open(self.fh + '.error', 'w') as error_fh:
             error_fh.write(str(msg).rstrip() + '\n')
 
+def wait_for_system_memory(log):
+    # safety guard to ensure that at least 25% of system memory is available
+    try:
+        import psutil
+        if psutil.virtual_memory().percent < 80:
+            return
+        log.log('Waiting for at least 20% of system memory to be available...')
+        while psutil.virtual_memory().percent > 80:
+            time.sleep(5)
+    except ImportError:
+        pass
+
 ### =================================================================================
 ###                                Main section
 ### ================================================================================= 
@@ -1036,6 +1080,7 @@ if __name__ == "__main__":
         header += '\n'.join(options).replace('True','').replace('False','')
         header = header[0:-1]+'\n'
         log.log(header)
+        wait_for_system_memory(log)
         log.log('Beginning analysis at {T} by {U}, host {H}'.format(T=time.ctime(), U=getpass.getuser(), H=socket.gethostname()))
 
         # run the analysis
