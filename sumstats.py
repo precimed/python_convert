@@ -111,6 +111,8 @@ def parse_args(args):
         help="Effect column. Default is to auto-detect. In case if multiple effect columns are present in the input file"
         " a warning will be shown and the first column is taken according to the priority list: "
         "Z (highest priority), BETA, OR, LOGODDS (lowest priority).")
+    parser_mat.add_argument("--a1-inc", action="store_true", default=False,
+        help='A1 is the increasing allele.')
     parser_mat.add_argument("--chunksize", default=100000, type=int,
         help="Size of chunk to read the file.")
     parser_mat.set_defaults(func=make_mat)
@@ -498,7 +500,7 @@ def make_mat(args, log):
 
     columns = list(pd.read_table(args.sumstats, sep='\t', nrows=0).columns)
     log.log('Columns in {}: {}'.format(args.sumstats, columns))
-    if args.effect is None:
+    if (args.effect is None) and (not args.a1_inc):
         if cols.Z in columns: args.effect = cols.Z
         elif cols.BETA in columns: args.effect = cols.BETA
         elif cols.OR in columns: args.effect = cols.OR
@@ -507,13 +509,17 @@ def make_mat(args, log):
         effect_size_column_count = np.sum([int(c in columns) for c in [cols.Z, cols.BETA, cols.OR, cols.LOGODDS]])
         if effect_size_column_count > 1: log.log('Warning: Multiple columns indicate effect direction')
         log.log('Use {} column as effect direction.'.format(args.effect))
-    missing_columns = [c for c in [cols.A1, cols.A2, cols.SNP, cols.PVAL, args.effect] if c not in columns]
+    missing_columns = [c for c in [cols.A1, cols.A2, cols.SNP, cols.PVAL, args.effect] if (c != None) and (c not in columns)]
     if missing_columns: raise(ValueError('{} columns are missing'.format(missing_columns)))
 
-    # if signed_effect is true, take effect column as string to handle correctly
-    # case of truncated numbers, e.g.: 0.00 and -0.00 should have different sign
-    signed_effect = False if args.effect == cols.OR else True
-    effect_col_dtype = str if signed_effect else np.float
+    if args.a1_inc:
+        signed_effect = None
+        effect_col_dtype_map = {}
+    else:
+        # if signed_effect is true, take effect column as string to handle correctly
+        # case of truncated numbers, e.g.: 0.00 and -0.00 should have different sign
+        signed_effect = False if args.effect == cols.OR else True
+        effect_col_dtype_map = {args.effect: (str if signed_effect else np.float)}
 
     log.log('Reading reference file {}...'.format(args.ref))
     usecols = [cols.SNP, cols.A1, cols.A2]
@@ -531,8 +537,8 @@ def make_mat(args, log):
     log.log("Reference dict contains {d} snps.".format(d=len(ref_dict)))
 
     log.log('Reading summary statistics file {}...'.format(args.sumstats))
-    reader = pd.read_table(args.sumstats, sep='\t', usecols=[cols.A1, cols.A2, cols.SNP, cols.PVAL, args.effect],
-                            chunksize=args.chunksize, dtype={args.effect:effect_col_dtype}, float_precision='high')
+    reader = pd.read_table(args.sumstats, sep='\t', usecols=[x for x in [cols.A1, cols.A2, cols.SNP, cols.PVAL, args.effect] if x is not None],
+                            chunksize=args.chunksize, dtype=effect_col_dtype_map, float_precision='high')
     df_out = None
     for i, chunk in enumerate(reader):
         if i==0: log.log('Column types:\n\t' + '\n\t'.join([column + ':' + str(dtype) for (column, dtype) in zip(chunk.columns, chunk.dtypes)]))
@@ -555,7 +561,9 @@ def make_mat(args, log):
         not_ref_effect = np.array([-1 if gt in ref_dict[sid][:2] else 1
             for sid, gt in zip(chunk[cols.SNP], gtypes)])
         #TODO: check proportion of positive and negative effects
-        if signed_effect:
+        if args.a1_inc:
+            effect_sign = np.ones(len(chunk))
+        elif signed_effect:
             # effect column has str type
             # -1 if effect starts with '-' else 1
             effect_sign = get_str_list_sign(chunk[args.effect].astype(str))
