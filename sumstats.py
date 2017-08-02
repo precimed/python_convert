@@ -453,12 +453,14 @@ def make_qc(args, log):
     for col in args.fix_dtype_cols:
         if col in sumstats:
             log.log('Set column {} dtype to {}'.format(col, cols_type_map[col]))
-            if cols_type_map[col] == float or cols_type_map[col] == np.float64:
+            if cols_type_map[col] in [float, np.float64, int]:
                 sumstats[col] = pd.to_numeric(sumstats[col], errors='coerce')
                 if col in args.dropna_cols:
                     sumstats_len = len(sumstats)
                     sumstats.dropna(subset=[col], inplace=True)
                     if len(sumstats) != sumstats_len: log.log('Drop {} markers after dtype conversion'.format(sumstats_len - len(sumstats)))
+                if cols_type_map[col] == int:
+                    sumstats[col] = sumstats[col].astype(int)
             else:
                 sumstats[col] = sumstats[col].astype(cols_type_map[col])
     for range in exclude_ranges:
