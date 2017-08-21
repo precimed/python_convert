@@ -68,6 +68,18 @@ def parse_args(args):
         help="Delimiter to use (',' ';' $' ' or $'\\t'). By default uses delim_whitespace option in pandas.read_table.")
     parser_csv.add_argument("--all-snp-info-23-and-me", default=None, type=str,
         help="all_snp_info file for summary stats in 23-and-me format")
+    parser_csv.add_argument("--n-val", default=None, type=float,
+        help="Sample size. If this option is not set, will try to infer the sample "
+        "size from the input file. If the input file contains a sample size "
+        "column, and this flag is set, the argument to this flag has priority.")
+    parser_csv.add_argument("--ncase-val", default=None, type=float,
+        help="Number of cases. If this option is not set, will try to infer the number "
+        "of cases from the input file. If the input file contains a number of cases "
+        "column, and this flag is set, the argument to this flag has priority.")
+    parser_csv.add_argument("--ncontrol-val", default=None, type=float,
+        help="Number of controls. If this option is not set, will try to infer the number "
+        "of controls from the input file. If the input file contains a number of controls "
+        "column, and this flag is set, the argument to this flag has priority.")
     parser_csv.set_defaults(func=make_csv)
 
     # 'qc' utility: miscellaneous quality control and filtering procedures
@@ -353,6 +365,9 @@ def make_csv(args, log):
                 log.log('Interpret column names as follows:')
                 for original in original_file_cname:
                     cname = cname_map.get(clean_header(original))
+                    if (args.ncase_val is not None) and (cname==cols.NCASE): cname=None
+                    if (args.ncontrol_val is not None) and (cname==cols.NCONTROL): cname=None
+                    if (args.n_val is not None) and (cname==cols.N): cname=None
                     log.log("\t{o} : {d} ({e})".format(o=original, d=cname, e="Will be deleted" if not cname else describe_cname[cname]))
                 if not cname_map: raise(ValueError('Arguments imply to delete all columns from the input file. Did you forget --auto flag?'))
 
@@ -388,6 +403,11 @@ def make_csv(args, log):
             # Ensure that alleles are coded as capital letters
             if cols.A1 in chunk.columns: chunk[cols.A1] = chunk[cols.A1].str.upper()
             if cols.A2 in chunk.columns: chunk[cols.A2] = chunk[cols.A2].str.upper()
+
+            # Populate sample size columns (NCASE, NCONTROL, N)
+            if args.ncase_val is not None: chunk[cols.NCASE] = args.ncase_val
+            if args.ncontrol_val is not None: chunk[cols.NCONTROL] = args.ncase_val
+            if args.n_val is not None: chunk[cols.N] = args.ncase_val
 
             chunk = chunk.sort_index(axis=1)
             chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA')
@@ -511,6 +531,11 @@ def make_mat(args, log):
         effect_size_column_count = np.sum([int(c in columns) for c in [cols.Z, cols.BETA, cols.OR, cols.LOGODDS]])
         if effect_size_column_count > 1: log.log('Warning: Multiple columns indicate effect direction')
         log.log('Use {} column as effect direction.'.format(args.effect))
+    n_col = cols.N if cols.N in columns else None
+    ncase_col = cols.NCASE if cols.NCASE in columns else None
+    ncontrol_col = cols.NCONTROL if cols.NCONTROL in columns else None
+    if (n_col is None) and ((ncase_col is None) or (ncontrol_col is None)):
+        raise(ValueError('Sample size column is not detected in {}. Expact either N or NCASE, NCONTROL column.'.format(args.sumstats)))
     missing_columns = [c for c in [cols.A1, cols.A2, cols.SNP, cols.PVAL, args.effect] if (c != None) and (c not in columns)]
     if missing_columns: raise(ValueError('{} columns are missing'.format(missing_columns)))
 
@@ -539,7 +564,7 @@ def make_mat(args, log):
     log.log("Reference dict contains {d} snps.".format(d=len(ref_dict)))
 
     log.log('Reading summary statistics file {}...'.format(args.sumstats))
-    reader = pd.read_table(args.sumstats, sep='\t', usecols=[x for x in [cols.A1, cols.A2, cols.SNP, cols.PVAL, args.effect] if x is not None],
+    reader = pd.read_table(args.sumstats, sep='\t', usecols=[x for x in [cols.A1, cols.A2, cols.SNP, cols.PVAL, args.effect, n_col, ncase_col, ncontrol_col] if x is not None],
                             chunksize=args.chunksize, dtype=effect_col_dtype_map, float_precision='high')
     df_out = None
     for i, chunk in enumerate(reader):
@@ -582,7 +607,12 @@ def make_mat(args, log):
         # set zscore of ambiguous SNPs to nan
         zvect[ind_ambiguous] = np.nan
         #TODO: check whether output df contains duplicated rs-ids (warn)
-        df = pd.DataFrame({"pvalue": log10pv, "zscore":zvect}, index=chunk[cols.SNP])
+        df = pd.DataFrame({
+            "pvalue": log10pv,
+            "zscore":zvect,
+            "nvec": chunk[n_col].values if (n_col is not None) else
+                    np.divide(2, np.sum(np.divide(1, chunk[ncase_col].values), np.divide(1, chunk[ncase_col].values)))
+            }, index=chunk[cols.SNP])
         if df_out is None: df_out = df
         else: df_out = df_out.append(df)
         print("{f}: {n} lines processed, {m} SNPs matched with reference file".format(f=args.sumstats, n=(i+1)*args.chunksize, m=len(df_out)))
@@ -598,7 +628,13 @@ def make_mat(args, log):
     df_ref_aligned = pd.DataFrame(columns=["pvalue", "zscore"], index=ref_snps)
     df_ref_aligned["pvalue"] = df_out["pvalue"]
     df_ref_aligned["zscore"] = df_out["zscore"]
-    save_dict = {"logpvec"+args.trait: df_ref_aligned["pvalue"].values, "zvec"+args.trait: df_ref_aligned["zscore"].values}
+    df_ref_aligned["nvec"] = df_out["nvec"]
+
+    save_dict = {
+        "logpvec"+args.trait: df_ref_aligned["pvalue"].values,
+        "zvec"+args.trait: df_ref_aligned["zscore"].values
+        "nvec"+args.trait: df_ref_aligned["nvec"].values
+    }
     sio.savemat(args.out, save_dict, format='5', do_compression=False,
         oned_as='column', appendmat=False)
     log.log("%s created" % args.out)
