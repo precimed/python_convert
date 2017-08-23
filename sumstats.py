@@ -341,6 +341,7 @@ def make_csv(args, log):
     reader = pd.read_table(args.sumstats, dtype=str, sep=args.sep, chunksize=args.chunksize)
     reader_23_and_me = pd.read_table(args.all_snp_info_23_and_me, dtype=str, sep=args.sep, chunksize=args.chunksize) if args.all_snp_info_23_and_me else None
     n_snps = 0
+    max_n_val = np.nan; max_ncase_val = np.nan; max_ncontrol_val = np.nan
     with open(args.out, 'a') as out_f:
         for chunk_index, chunk in enumerate(reader):
             if reader_23_and_me:
@@ -406,8 +407,13 @@ def make_csv(args, log):
 
             # Populate sample size columns (NCASE, NCONTROL, N)
             if args.ncase_val is not None: chunk[cols.NCASE] = args.ncase_val
-            if args.ncontrol_val is not None: chunk[cols.NCONTROL] = args.ncase_val
-            if args.n_val is not None: chunk[cols.N] = args.ncase_val
+            if args.ncontrol_val is not None: chunk[cols.NCONTROL] = args.ncontrol_val
+            if args.n_val is not None: chunk[cols.N] = args.n_val
+
+            # Keep track of the largest NCASE, NCONTROL and N values
+            if cols.NCASE in chunk: max_ncase_val = np.nanmax([max_ncase_val, chunk[cols.NCASE].astype(float).max()])
+            if cols.NCONTROL in chunk: max_ncontrol_val = np.nanmax([max_ncontrol_val, chunk[cols.NCONTROL].astype(float).max()])
+            if cols.N in chunk: max_n_val = np.nanmax([max_n_val, chunk[cols.N].astype(float).max()])
 
             chunk = chunk.sort_index(axis=1)
             chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA')
@@ -419,6 +425,7 @@ def make_csv(args, log):
 
         if n_snps == 0: raise(ValueError('Input summary stats file appears to be empty.'))
         log.log("Done. {n} SNPs saved to {f}".format(n=n_snps, f=args.out))
+        log.log('Sample size: N={} NCASE={} NCONTROL={}'.format(max_n_val, max_ncase_val, max_ncontrol_val))
 
     if not args.skip_validation:
         log.log('Validate the resulting file...')
@@ -432,7 +439,13 @@ def make_csv(args, log):
 
 ### =================================================================================
 ###                          Implementation for parser_qc
-### ================================================================================= 
+### =================================================================================
+def describe_sample_size(sumstats, log):
+    log.log('Sample size N={} NCASE={} NCONTROL={}'.format(
+        sumstats[cols.N].max() if cols.N in sumstats else np.nan,
+        sumstats[cols.NCASE].max() if cols.NCASE in sumstats else np.nan,
+        sumstats[cols.NCONTROL].max() if cols.NCONTROL in sumstats else np.nan))
+
 def make_qc(args, log):
     check_input_file(args.sumstats)
     check_output_file(args.out, args.force)
@@ -494,6 +507,7 @@ def make_qc(args, log):
         if len(sumstats) != sumstats_len: log.log('Drop {} markers because OR exceeded threshold'.format(sumstats_len - len(sumstats)))
     sumstats.to_csv(args.out, index=False, header=True, sep='\t', na_rep='NA')
     log.log("{n} SNPs saved to {f}".format(n=len(sumstats), f=args.out))
+    describe_sample_size(sumstats, log)
 
 ### =================================================================================
 ###                          Implementation for parser_mat
@@ -578,6 +592,7 @@ def make_mat(args, log):
         chunk = chunk.loc[ind,:]
         gtypes = gtypes[ind]
         log10pv = -np.log10(chunk[cols.PVAL].values)
+        nvec = np.copy(chunk[n_col].values) if (n_col is not None) else np.divide(2.0, np.divide(1.0, chunk[ncase_col].astype(float).values) + np.divide(1.0, chunk[ncase_col].astype(float).values))
         # not_ref_effect = [
         #   1 if effect allele in data == other allele in reference
         #   -1 if effect allele in data == effect allele in reference ]
@@ -607,12 +622,7 @@ def make_mat(args, log):
         # set zscore of ambiguous SNPs to nan
         zvect[ind_ambiguous] = np.nan
         #TODO: check whether output df contains duplicated rs-ids (warn)
-        df = pd.DataFrame({
-            "pvalue": log10pv,
-            "zscore":zvect,
-            "nvec": chunk[n_col].values if (n_col is not None) else
-                    np.divide(2, np.sum(np.divide(1, chunk[ncase_col].values), np.divide(1, chunk[ncase_col].values)))
-            }, index=chunk[cols.SNP])
+        df = pd.DataFrame({"pvalue": log10pv, "zscore":zvect, "nvec": nvec}, index=chunk[cols.SNP])
         if df_out is None: df_out = df
         else: df_out = df_out.append(df)
         print("{f}: {n} lines processed, {m} SNPs matched with reference file".format(f=args.sumstats, n=(i+1)*args.chunksize, m=len(df_out)))
@@ -632,7 +642,7 @@ def make_mat(args, log):
 
     save_dict = {
         "logpvec"+args.trait: df_ref_aligned["pvalue"].values,
-        "zvec"+args.trait: df_ref_aligned["zscore"].values
+        "zvec"+args.trait: df_ref_aligned["zscore"].values,
         "nvec"+args.trait: df_ref_aligned["nvec"].values
     }
     sio.savemat(args.out, save_dict, format='5', do_compression=False,
@@ -771,6 +781,7 @@ def make_lift(args, log):
         compression='gzip' if args.gzip else None)
 
     log.log("{n} SNPs saved to {f}".format(n=len(df), f=args.out))
+    describe_sample_size(df, log)
     log.log('Summary: \n\t{}'.format("\n\t".join(fixes)))
 
 ### =================================================================================
