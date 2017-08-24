@@ -589,7 +589,7 @@ def make_mat(args, log):
         chunk = chunk.loc[ind,:]
         gtypes = gtypes[ind]
         log10pv = -np.log10(chunk[cols.PVAL].values)
-        nvec = np.copy(chunk[n_col].values) if (n_col is not None) else np.divide(2.0, np.divide(1.0, chunk[ncase_col].astype(float).values) + np.divide(1.0, chunk[ncase_col].astype(float).values))
+        nvec = np.copy(chunk[n_col].values) if (n_col is not None) else np.divide(2.0, np.divide(1.0, chunk[ncase_col].astype(float).values) + np.divide(1.0, chunk[ncontrol_col].astype(float).values))
         # not_ref_effect = [
         #   1 if effect allele in data == other allele in reference
         #   -1 if effect allele in data == effect allele in reference ]
