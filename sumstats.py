@@ -178,9 +178,6 @@ def parse_args(args):
     parser_ls.add_argument("--out", type=str, help="[required] File to output the result.")
     parser_ls.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
 
-    parser_ls.add_argument("--snp", action="store_true", default=False,
-        help="Include information about how many SNPs are there in the file. "
-        "This option is slow because causes a complete scan of all input files.")
     parser_ls.set_defaults(func=make_ls)
 
     # 'mat-to-csv' utility: convert matlab .mat file with logpvec and zvec into CSV files
@@ -819,15 +816,36 @@ def make_rs(args, log):
 ###                          Implementation for make_ls
 ### =================================================================================
 def make_ls(args, log):
-    ml = max([len(os.path.basename(file)) for file in glob.glob(args.path)])
-    cols_list = [x for x in cols._asdict() if x not in ['A1A2', 'CHRPOS']]
+    ml = max([len(os.path.basename(file).replace('.csv.gz', '')) for file in glob.glob(args.path)])
+    cols_list = [x for x in cols._asdict() if x not in ['A1A2', 'CHRPOS',  'SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2']]
     log.log('{f}\t{n}\t{c}'.format(f='file'.ljust(ml),n='#snp'.ljust(9),c='\t'.join([x.replace('NCONTROL', 'NCONT.') for x in cols_list])))
-    num_snps = 'n/a'
     for file in glob.glob(args.path):
         if not os.path.isfile(file): continue
-        if args.snp: num_snps = sum(1 for line in get_compression_and_open(file))-1
+        if '_noMHC' in file: continue
+        num_snps = np.nan; n = np.nan; ncase = np.nan; ncontrol = np.nan 
+        try:
+            file_log = os.path.splitext(file)[0] + '.log'
+            if os.path.isfile(file_log):
+                lines = open(file_log, 'r').readlines()
+                num_snps = [int(x.group(1)) for x in [re.search('([0-9]+) SNPs saved to', line.strip()) for line in lines] if x][0]
+                n = [float(x.group(1)) for x in [re.search(r'Sample size.* N=([^ ]+) ', line.strip()) for line in lines] if x][0]
+                ncase = [float(x.group(1)) for x in [re.search(r'Sample size.* NCASE=([^ ]+) ', line.strip()) for line in lines] if x][0]
+                ncontrol = [float(x.group(1)) for x in [re.search(r'Sample size.* NCONTROL=([^ ]+)', line.strip()) for line in lines] if x][0]
+        except:
+            pass
+
+        num_snps = 'n/a' if np.isnan(num_snps) else str(num_snps)
+        n = 'n/a' if np.isnan(n) else str(int(n))
+        ncase = 'n/a' if np.isnan(ncase) else str(int(ncase))
+        ncontrol = 'n/a' if np.isnan(ncontrol) else str(int(ncontrol))
+
         for chunk in pd.read_table(file, sep='\t', chunksize=1):
-            log.log('{f}\t{n}\t{c}'.format(f=os.path.basename(file).ljust(ml), c='\t'.join([('YES' if x in chunk else '-') for x in cols_list]),n=str(num_snps).ljust(9)))
+            yes_no_or_sample_size = [(  n if (x == 'N') else
+                                        ncase if (x == 'NCASE') else
+                                        ncontrol if (x == 'NCONTROL') else
+                                        'YES' if x in chunk
+                                        else '-') for x in cols_list]
+            log.log('{f}\t{n}\t{c}'.format(f=os.path.basename(file).replace('.csv.gz', '').ljust(ml), c='\t'.join(yes_no_or_sample_size),n=str(num_snps).ljust(9)))
             break
     log.log('Columns description:')
     for cname in sorted(cols._asdict()):
