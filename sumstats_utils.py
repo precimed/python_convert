@@ -51,10 +51,10 @@ def align_alleles(z, alleles):
         raise KeyError('Incompatible alleles. ')
     return z
 
-Cols = namedtuple('Cols', ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'N', 'NCASE', 'NCONTROL', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2'])
-cols = Cols._make(        ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'N', 'NCASE', 'NCONTROL', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2'])
+Cols = namedtuple('Cols', ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'N', 'NCASE', 'NCONTROL', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2', 'CHRPOSA1A2'])
+cols = Cols._make(        ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'N', 'NCASE', 'NCONTROL', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2', 'CHRPOSA1A2'])
 cols_type_map =           {'SNP':str, 'CHR':int, 'BP':int, 'PVAL':np.float64, 'A1':str, 'A2':str, 'N':int, 'NCASE':int, 'NCONTROL':int, 'Z':float, 'OR':float, 'BETA':float,
-                           'LOGODDS':float, 'SE':float, 'INFO':float, 'FRQ':float, 'NSTUDY':int, 'CHRPOS':str, 'A1A2':str}
+                           'LOGODDS':float, 'SE':float, 'INFO':float, 'FRQ':float, 'NSTUDY':int, 'CHRPOS':str, 'A1A2':str, 'CHRPOSA1A2':str}
 null_values = {
     cols.LOGODDS: 0,
     cols.BETA: 0,
@@ -169,6 +169,7 @@ describe_cname = {
     'UNKNOWN': 'Unknown column type (will be skipped).',
     cols.CHRPOS: 'chr:pos column with colon-separated information about Chromosome and Base-pair position',
     cols.A1A2: 'A1/A2 column with slash-separated information about marker allles',
+    cols.CHRPOSA1A2: 'chr:pos:ref:alt column with colon-separated information about Chromosome, Base-pair position, Reference allele, Alternative allele',
 }
 
 def clean_header(header):

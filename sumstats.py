@@ -370,12 +370,12 @@ def make_csv(args, log):
                 if not cname_map: raise(ValueError('Arguments imply to delete all columns from the input file. Did you forget --auto flag?'))
 
                 final_cols = set(cname_map.values())  # final list of columns in the resulting file
-                if (cols.CHRPOS not in final_cols) and (cols.CHR not in final_cols): log.log('Warning: CHR column ({}) is not found'.format(describe_cname[cols.CHR]))
-                if (cols.CHRPOS not in final_cols) and (cols.BP not in final_cols): log.log('Warning: BP column ({}) is not found'.format(describe_cname[cols.BP]))
+                if (cols.CHRPOS not in final_cols) and (cols.CHRPOSA1A2 not in final_cols) and (cols.CHR not in final_cols): log.log('Warning: CHR column ({}) is not found'.format(describe_cname[cols.CHR]))
+                if (cols.CHRPOS not in final_cols) and (cols.CHRPOSA1A2 not in final_cols) and (cols.BP not in final_cols): log.log('Warning: BP column ({}) is not found'.format(describe_cname[cols.BP]))
                 if cols.SNP not in final_cols: log.log('Warning: SNP column ({}) is not found'.format(describe_cname[cols.SNP]))
                 if cols.PVAL not in final_cols: log.log('Warning: PVAL column ({}) is not found'.format(describe_cname[cols.PVAL]))
-                if (cols.A1 not in final_cols) and (cols.A1A2 not in final_cols): log.log('Warning: A1 column ({}) is not found'.format(describe_cname[cols.A1]))
-                if (cols.A2 not in final_cols) and (cols.A1A2 not in final_cols): log.log('Warning: A2 column ({}) is not found'.format(describe_cname[cols.A2]))
+                if (cols.A1 not in final_cols) and (cols.A1A2 not in final_cols) and (cols.CHRPOSA1A2 not in final_cols): log.log('Warning: A1 column ({}) is not found'.format(describe_cname[cols.A1]))
+                if (cols.A2 not in final_cols) and (cols.A1A2 not in final_cols) and (cols.CHRPOSA1A2 not in final_cols): log.log('Warning: A2 column ({}) is not found'.format(describe_cname[cols.A2]))
                 effect_size_column_count = int(cols.Z in final_cols) + int(cols.OR in final_cols) + int(cols.BETA in final_cols) + int(cols.LOGODDS in final_cols)
                 if effect_size_column_count == 0: log.log('Warning: None of the columns indicate effect direction: typically either BETA, OR, LOGODDS or Z column is expected')
                 if effect_size_column_count > 1: log.log('Warning: Multiple columns indicate effect direction: typically only one of BETA, OR, LOGODDS and Z columns is expected')
@@ -392,6 +392,11 @@ def make_csv(args, log):
             if cols.A1A2 in chunk.columns:
                 chunk[cols.A1], chunk[cols.A2] = chunk[cols.A1A2].str.split('/', 1).str
                 chunk.drop(cols.A1A2, axis=1, inplace=True)
+
+            # Split CHR:POS:A1:A2 column into four
+            if cols.CHRPOSA1A2 in chunk.columns:
+                chunk[cols.CHR], chunk[cols.BP], chunk[cols.A1], chunk[cols.A2] = chunk[cols.CHRPOSA1A2].str.split(':', 3).str
+                chunk.drop(cols.CHRPOSA1A2, axis=1, inplace=True)
 
             # Ensure standard labels in CHR column
             if cols.CHR in chunk.columns:
@@ -817,7 +822,7 @@ def make_rs(args, log):
 ### =================================================================================
 def make_ls(args, log):
     ml = max([len(os.path.basename(file).replace('.csv.gz', '')) for file in glob.glob(args.path)])
-    cols_list = [x for x in cols._asdict() if x not in ['A1A2', 'CHRPOS',  'SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2']]
+    cols_list = [x for x in cols._asdict() if x not in ['A1A2', 'CHRPOS', 'CHRPOSA1A2', 'SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2']]
     log.log('{f}\t{n}\t{c}'.format(f='file'.ljust(ml),n='#snp'.ljust(9),c='\t'.join([x.replace('NCONTROL', 'NCONT.') for x in cols_list])))
     for file in glob.glob(args.path):
         if not os.path.isfile(file): continue
