@@ -99,6 +99,8 @@ def parse_args(args):
         help='List of column names. Ensure appropriate data type for the columns (CHR, BP - int, PVAL - float, etc)')
     parser_qc.add_argument("--max-or", type=float, default=None,
         help='Filter SNPs with OR (odds ratio) exceeding specified threshold')
+    parser_qc.add_argument("--update-z-col-from-beta-and-se",  action="store_true", default=False,
+        help='Create or update Z score column from BETA and SE columns')
     parser_qc.set_defaults(func=make_qc)
 
     # 'mat' utility: load summary statistics into matlab format
@@ -477,9 +479,15 @@ def make_qc(args, log):
     if args.max_or is not None:
         args.fix_dtype_cols.append('OR')
 
+    if args.update_z_col_from_beta_and_se:
+        args.fix_dtype_cols.extend(['BETA', 'SE'])
+
     log.log('Reading sumstats file {}...'.format(args.sumstats))
     sumstats = pd.read_table(args.sumstats, sep='\t', dtype=str)
     log.log("Sumstats file contains {d} markers.".format(d=len(sumstats)))
+
+    if args.update_z_col_from_beta_and_se and (('BETA' not in sumstats) or ('SE' not in sumstats)):
+        raise(ValueError('BETA and SE columns are required for --update-z-col-from-beta-and-se'))
 
     if len(args.dropna_cols) > 0:
         sumstats_len = len(sumstats)
@@ -507,6 +515,9 @@ def make_qc(args, log):
         sumstats_len = len(sumstats)
         sumstats.drop(sumstats.OR > args.max_or, inplace=True)
         if len(sumstats) != sumstats_len: log.log('Drop {} markers because OR exceeded threshold'.format(sumstats_len - len(sumstats)))
+    if args.update_z_col_from_beta_and_se:
+        sumstats['Z'] = np.divide(sumstats.BETA.values, sumstats.SE.values) 
+
     sumstats.to_csv(args.out, index=False, header=True, sep='\t', na_rep='NA')
     log.log("{n} SNPs saved to {f}".format(n=len(sumstats), f=args.out))
     describe_sample_size(sumstats, log)
