@@ -218,6 +218,17 @@ def parse_args(args):
         help="Name of .M_5_50 files, where symbol @ indicates chromosome index. Example: baseline.@.l2.M_5_50")
     parser_ldsctomat.set_defaults(func=ldsc_to_mat)
 
+    # 'frq-to-mat' utility: convert allele frequency from FRQ plink format to .mat files
+    parser_frqtomat = subparsers.add_parser("frq-to-mat",
+        help="Convert .frq files plink from .mat files.")
+
+    parser_frqtomat.add_argument("--ref", type=str, help="Tab-separated file with list of referense SNPs.")
+    parser_frqtomat.add_argument("--out", type=str, help="[required] File to output the result.")
+    parser_frqtomat.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
+    parser_frqtomat.add_argument("--frq", type=str, default=None,
+        help="Name of .frq files, where symbol @ indicates chromosome index. Example: 1000G.EUR.QC.@.frq")
+    parser_frqtomat.set_defaults(func=frq_to_mat)
+
     # 'diff-mat' utility: compare two .mat files with logpvec, zvec and nvec, and report the differences
     parser_diffmat = subparsers.add_parser("diff-mat",
         help="Compare two .mat files with logpvec, zvec and nvec, "
@@ -971,6 +982,33 @@ def ldsc_to_mat(args, log):
         m = np.atleast_2d(m.sum().values)
         log.log('M={}'.format(m))
         save_dict['M']=m
+
+    sio.savemat(args.out, save_dict, format='5', do_compression=False, oned_as='column', appendmat=False)
+    log.log('Result written to {f}'.format(f=args.out))
+
+### =================================================================================
+###                          Implementation for frq_to_mat
+### =================================================================================
+def frq_to_mat(args, log):
+    if args.ref:
+        check_input_file(args.ref)
+    for chri in range(1, 23):
+        check_input_file(args.frq.replace('@', str(chri)))
+    check_output_file(args.out, args.force)
+
+    if args.ref:
+        log.log('Reading reference file {}...'.format(args.ref))
+        ref_file = pd.read_table(args.ref, sep='\t', usecols=[cols.SNP, cols.A1, cols.A2])
+        log.log("Reference dict contains {d} snps.".format(d=len(ref_file)))
+
+    save_dict = {}
+    df_frq = pd.concat([pd.read_csv(args.frq.replace('@', str(chri)), delim_whitespace=True)  for chri in range(1, 23)])
+    log.log('Frq file contains {d} snps'.format(d=len(df_frq)))
+    if args.ref:
+        df_frq = pd.merge(ref_file[['SNP']], df_frq, how='left', on='SNP')
+        log.log('{d} non-null values after merging with ref file'.format(d=df_frq.MAF.notnull().sum()))
+
+    save_dict['mafvec'] = df_frq.MAF.values
 
     sio.savemat(args.out, save_dict, format='5', do_compression=False, oned_as='column', appendmat=False)
     log.log('Result written to {f}'.format(f=args.out))
