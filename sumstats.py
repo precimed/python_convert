@@ -227,6 +227,8 @@ def parse_args(args):
     parser_frqtomat.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
     parser_frqtomat.add_argument("--frq", type=str, default=None,
         help="Name of .frq files, where symbol @ indicates chromosome index. Example: 1000G.EUR.QC.@.frq")
+    parser_frqtomat.add_argument("--afreq", type=str, default=None,
+        help="Name of .afreq files, where symbol @ indicates chromosome index. Example: 1000G.EUR.QC.@.afreq")
     parser_frqtomat.set_defaults(func=frq_to_mat)
 
     # 'diff-mat' utility: compare two .mat files with logpvec, zvec and nvec, and report the differences
@@ -992,8 +994,13 @@ def ldsc_to_mat(args, log):
 def frq_to_mat(args, log):
     if args.ref:
         check_input_file(args.ref)
+    if args.frq and args.afreq:
+        raise ValueError('--frq and --afreq must not be used together')
+    frq = args.frq if args.frq else args.afreq
+    snp_col = 'SNP' if args.frq else 'ID'
+    maf_col = 'MAF' if args.frq else 'ALT_FREQS'
     for chri in range(1, 23):
-        check_input_file(args.frq.replace('@', str(chri)))
+        check_input_file(frq.replace('@', str(chri)))
     check_output_file(args.out, args.force)
 
     if args.ref:
@@ -1002,13 +1009,13 @@ def frq_to_mat(args, log):
         log.log("Reference dict contains {d} snps.".format(d=len(ref_file)))
 
     save_dict = {}
-    df_frq = pd.concat([pd.read_csv(args.frq.replace('@', str(chri)), delim_whitespace=True)  for chri in range(1, 23)])
-    log.log('Frq file contains {d} snps'.format(d=len(df_frq)))
+    df_frq = pd.concat([pd.read_csv(frq.replace('@', str(chri)), delim_whitespace=True)  for chri in range(1, 23)])
+    log.log('Input file contains {d} snps'.format(d=len(df_frq)))
     if args.ref:
-        df_frq = pd.merge(ref_file[['SNP']], df_frq, how='left', on='SNP')
-        log.log('{d} non-null values after merging with ref file'.format(d=df_frq.MAF.notnull().sum()))
+        df_frq = pd.merge(ref_file[['SNP']], df_frq, how='left', left_on='SNP', right_on=snp_col)
+        log.log('{d} non-null values after merging with ref file'.format(d=df_frq[maf_col].notnull().sum()))
 
-    save_dict['mafvec'] = df_frq.MAF.values
+    save_dict['mafvec'] = df_frq[maf_col].values
 
     sio.savemat(args.out, save_dict, format='5', do_compression=False, oned_as='column', appendmat=False)
     log.log('Result written to {f}'.format(f=args.out))
