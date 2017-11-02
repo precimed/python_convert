@@ -231,6 +231,15 @@ def parse_args(args):
         help="Name of .afreq files, where symbol @ indicates chromosome index. Example: 1000G.EUR.QC.@.afreq")
     parser_frqtomat.set_defaults(func=frq_to_mat)
 
+    # 'ref-to-mat' utility: convert reference file to .mat file
+    parser_reftomat = subparsers.add_parser("ref-to-mat",
+        help="Convert reference file to .mat file")
+
+    parser_reftomat.add_argument("--ref", type=str, help="Tab-separated file with list of referense SNPs.")
+    parser_reftomat.add_argument("--out", type=str, help="[required] File to output the result.")
+    parser_reftomat.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
+    parser_reftomat.set_defaults(func=ref_to_mat)
+
     # 'diff-mat' utility: compare two .mat files with logpvec, zvec and nvec, and report the differences
     parser_diffmat = subparsers.add_parser("diff-mat",
         help="Compare two .mat files with logpvec, zvec and nvec, "
@@ -1017,6 +1026,23 @@ def frq_to_mat(args, log):
 
     save_dict['mafvec'] = df_frq[maf_col].values
 
+    sio.savemat(args.out, save_dict, format='5', do_compression=False, oned_as='column', appendmat=False)
+    log.log('Result written to {f}'.format(f=args.out))
+
+### =================================================================================
+###                          Implementation for ref_to_mat
+### =================================================================================
+def ref_to_mat(args, log):
+    check_input_file(args.ref)
+    check_output_file(args.out, args.force)
+
+    log.log('Reading reference file {}...'.format(args.ref))
+    ref_file = pd.read_table(args.ref, sep='\t')
+    log.log("Reference dict contains {d} snps.".format(d=len(ref_file)))
+
+    save_dict = {}
+    save_dict['chrnumvec'] = ref_file['CHR'].values
+    save_dict['posvec'] = ref_file['BP'].values
     sio.savemat(args.out, save_dict, format='5', do_compression=False, oned_as='column', appendmat=False)
     log.log('Result written to {f}'.format(f=args.out))
 
