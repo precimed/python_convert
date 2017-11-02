@@ -119,6 +119,12 @@ def parse_args(args):
     parser_mat.add_argument("--out", type=str, help="[required] File to output the result. File should end with .mat extension.")
     parser_mat.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
 
+    parser_mat.add_argument("--keep-cols", nargs='*', choices=cols._fields,
+        default=[], type=lambda col: col.upper(), metavar='COLUMN_NAME',
+        help="Columns from csv file to keep in mat file")
+    parser_mat.add_argument("--keep-all-cols", action="store_true",
+        default=False, help="Keep all columns from cvs file in mat file, except SNP, CHR, BP, A1 and A2")
+
     parser_mat.add_argument("--trait", type=str, default='',
         help="Trait name that will be used in mat file. Can be kept empty, in this case the variables will be named 'logpvec', 'zvec' and 'nvec'")
     parser_mat.add_argument("--effect", default=None, type=str, choices=['BETA', 'OR', 'Z', 'LOGODDS'],
@@ -230,15 +236,6 @@ def parse_args(args):
     parser_frqtomat.add_argument("--afreq", type=str, default=None,
         help="Name of .afreq files, where symbol @ indicates chromosome index. Example: 1000G.EUR.QC.@.afreq")
     parser_frqtomat.set_defaults(func=frq_to_mat)
-
-    # 'ref-to-mat' utility: convert reference file to .mat file
-    parser_reftomat = subparsers.add_parser("ref-to-mat",
-        help="Convert reference file to .mat file")
-
-    parser_reftomat.add_argument("--ref", type=str, help="Tab-separated file with list of referense SNPs.")
-    parser_reftomat.add_argument("--out", type=str, help="[required] File to output the result.")
-    parser_reftomat.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
-    parser_reftomat.set_defaults(func=ref_to_mat)
 
     # 'diff-mat' utility: compare two .mat files with logpvec, zvec and nvec, and report the differences
     parser_diffmat = subparsers.add_parser("diff-mat",
@@ -571,6 +568,14 @@ def make_mat(args, log):
 
     columns = list(pd.read_table(args.sumstats, sep='\t', nrows=0).columns)
     log.log('Columns in {}: {}'.format(args.sumstats, columns))
+
+    # cols2ignore: columns from sumstats file which are dropped anyway
+    cols2ignore = ["SNP", "CHR", "BP", "A1", "A2"]
+    # cols2keep: columns from sumstats file which are kept in mat file
+    cols2keep = cols._fields if args.keep_all_cols else args.keep_cols
+    # cols2keep: columns from sumstats file which are not saved to mat file
+    cols2drop = (set(columns) - set(cols2keep)) | set(cols2ignore)
+
     if (args.effect is None) and (not args.a1_inc):
         if cols.Z in columns: args.effect = cols.Z
         elif cols.BETA in columns: args.effect = cols.BETA
@@ -613,8 +618,8 @@ def make_mat(args, log):
     log.log("Reference dict contains {d} snps.".format(d=len(ref_dict)))
 
     log.log('Reading summary statistics file {}...'.format(args.sumstats))
-    reader = pd.read_table(args.sumstats, sep='\t', usecols=[x for x in [cols.A1, cols.A2, cols.SNP, cols.PVAL, args.effect, n_col, ncase_col, ncontrol_col] if x is not None],
-                            chunksize=args.chunksize, dtype=effect_col_dtype_map, float_precision='high')
+    reader = pd.read_table(args.sumstats, sep='\t', chunksize=args.chunksize,
+        dtype=effect_col_dtype_map, float_precision='high')
     df_out = None
     for i, chunk in enumerate(reader):
         if i==0: log.log('Column types:\n\t' + '\n\t'.join([column + ':' + str(dtype) for (column, dtype) in zip(chunk.columns, chunk.dtypes)]))
@@ -627,7 +632,6 @@ def make_mat(args, log):
         chunk = chunk.loc[ind,:]
         gtypes = gtypes[ind]
         log10pv = -np.log10(chunk[cols.PVAL].values)
-        nvec = np.copy(chunk[n_col].values) if (n_col is not None) else np.divide(2.0, np.divide(1.0, chunk[ncase_col].astype(float).values) + np.divide(1.0, chunk[ncontrol_col].astype(float).values))
         # not_ref_effect = [
         #   1 if effect allele in data == other allele in reference
         #   -1 if effect allele in data == effect allele in reference ]
@@ -657,10 +661,24 @@ def make_mat(args, log):
         # set zscore of ambiguous SNPs to nan
         zvect[ind_ambiguous] = np.nan
         #TODO: check whether output df contains duplicated rs-ids (warn)
-        df = pd.DataFrame({"pvalue": log10pv, "zscore":zvect, "nvec": nvec}, index=chunk[cols.SNP])
-        if df_out is None: df_out = df
-        else: df_out = df_out.append(df)
+
+        # reindex by SNP, add required columns and drop unnecessary columns
+        chunk.index = chunk[cols.SNP]
+        # add required columns
+        chunk["logpvec"] = log10pv
+        chunk["zvec"] = zvect
+        if n_col is None:
+            nvec = 2./(1./chunk[ncase_col] + 1./chunk[ncontrol_col])
+            chunk["nvec"] = nvec
+        chunk.drop(cols2drop, axis=1, inplace=True)
+
+        if df_out is None:
+            df_out = chunk.copy()
+        else:
+            df_out = df_out.append(chunk)
+
         print("{f}: {n} lines processed, {m} SNPs matched with reference file".format(f=args.sumstats, n=(i+1)*args.chunksize, m=len(df_out)))
+
     if df_out.empty: raise(ValueError("No SNPs match after joining with reference data"))
     dup_index = df_out.index.duplicated(keep=False)
     if dup_index.any():
@@ -668,18 +686,15 @@ def make_mat(args, log):
         log.log(df_out[dup_index])
         log.log("Keeping only the first occurance.")
     df_out = df_out[~df_out.index.duplicated(keep='first')]
+    # allign index accordind order of SNPs in ref, insert NaN rows for SNPs that
+    # present in ref but absent in sumstats file
+    df_out = df_out.loc[ref_snps,:]
 
     log.log('Writing .mat file...')
-    df_ref_aligned = pd.DataFrame(columns=["pvalue", "zscore"], index=ref_snps)
-    df_ref_aligned["pvalue"] = df_out["pvalue"]
-    df_ref_aligned["zscore"] = df_out["zscore"]
-    df_ref_aligned["nvec"] = df_out["nvec"]
 
-    save_dict = {
-        "logpvec"+args.trait: df_ref_aligned["pvalue"].values,
-        "zvec"+args.trait: df_ref_aligned["zscore"].values,
-        "nvec"+args.trait: df_ref_aligned["nvec"].values
-    }
+    #TODO: check column type, transform into matrix if not numeric
+    save_dict = {c+args.trait: df_out[c].values for c in df_out.columns}
+
     sio.savemat(args.out, save_dict, format='5', do_compression=False,
         oned_as='column', appendmat=False)
     log.log("%s created" % args.out)
@@ -1026,23 +1041,6 @@ def frq_to_mat(args, log):
 
     save_dict['mafvec'] = df_frq[maf_col].values
 
-    sio.savemat(args.out, save_dict, format='5', do_compression=False, oned_as='column', appendmat=False)
-    log.log('Result written to {f}'.format(f=args.out))
-
-### =================================================================================
-###                          Implementation for ref_to_mat
-### =================================================================================
-def ref_to_mat(args, log):
-    check_input_file(args.ref)
-    check_output_file(args.out, args.force)
-
-    log.log('Reading reference file {}...'.format(args.ref))
-    ref_file = pd.read_table(args.ref, sep='\t')
-    log.log("Reference dict contains {d} snps.".format(d=len(ref_file)))
-
-    save_dict = {}
-    save_dict['chrnumvec'] = ref_file['CHR'].values
-    save_dict['posvec'] = ref_file['BP'].values
     sio.savemat(args.out, save_dict, format='5', do_compression=False, oned_as='column', appendmat=False)
     log.log('Result written to {f}'.format(f=args.out))
 
