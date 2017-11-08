@@ -569,8 +569,25 @@ def make_mat(args, log):
     columns = list(pd.read_table(args.sumstats, sep='\t', nrows=0).columns)
     log.log('Columns in {}: {}'.format(args.sumstats, columns))
 
+    # check whether arguments are correct
+    if args.keep_all_cols and args.keep_cols:
+        err_msg = ("Misleading input arguments! Use either '--keep-cols' or "
+            "'--keep-all-cols' option, but not both at a time.")
+        raise(ValueError(err_msg))
+    not_in_csv_keep_cols = set(args.keep_cols) - set(columns)
+    if not_in_csv_keep_cols:
+        log.log("Warning: '--keep-cols' contains names which are absent in csv "
+            "file: %s. They will be ignored." % ', '.join(not_in_csv_keep_cols))
+
+
     # cols2ignore: columns from sumstats file which are dropped anyway
     cols2ignore = ["SNP", "CHR", "BP", "A1", "A2"]
+    if (set(cols2ignore) - set(columns)):
+        # If this happens, probably standard format of csv file has changed.
+        absent_cols = set(cols2ignore) - set(columns)
+        err_msg = ("Columns required in standard csv file: {} are missing in "
+            "input csv file {}.").format(', '.join(absent_cols), args.sumstats)
+        raise(RuntimeError(err_msg))
     # cols2keep: columns from sumstats file which are kept in mat file
     cols2keep = cols._fields if args.keep_all_cols else args.keep_cols
     # cols2keep: columns from sumstats file which are not saved to mat file
@@ -669,7 +686,9 @@ def make_mat(args, log):
         chunk["zvec"] = zvect
         if n_col is None:
             nvec = 2./(1./chunk[ncase_col] + 1./chunk[ncontrol_col])
-            chunk["nvec"] = nvec
+        else:
+            nvec = chunk[n_col].values
+        chunk["nvec"] = nvec
         chunk.drop(cols2drop, axis=1, inplace=True)
 
         if df_out is None:
