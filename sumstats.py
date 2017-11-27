@@ -718,7 +718,7 @@ def make_mat(args, log):
     log.log('Writing .mat file...')
 
     #TODO: check column type, transform into matrix if not numeric
-    save_dict = {c+args.trait: df_out[c].values for c in df_out.columns}
+    save_dict = {c+args.trait: df_out[c].astype(np.float64).values for c in df_out.columns}
 
     sio.savemat(args.out, save_dict, format='5', do_compression=False,
         oned_as='column', appendmat=False)
