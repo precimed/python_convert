@@ -80,6 +80,9 @@ def parse_args(args):
         help="Number of controls. If this option is not set, will try to infer the number "
         "of controls from the input file. If the input file contains a number of controls "
         "column, and this flag is set, the argument to this flag has priority.")
+    parser_csv.add_argument("--header", default=None, type=str,
+        help="Whitespace-delimited list of column names. "
+        "This could be used for input files without column names.")
     parser_csv.set_defaults(func=make_csv)
 
     # 'qc' utility: miscellaneous quality control and filtering procedures
@@ -356,7 +359,10 @@ def make_csv(args, log):
         header = get_header(args.sumstats, lines=args.head)
         for line in header: log.log(line)
 
-    reader = pd.read_table(args.sumstats, dtype=str, sep=args.sep, chunksize=args.chunksize)
+    if args.header is None:
+        reader = pd.read_table(args.sumstats, dtype=str, sep=args.sep, chunksize=args.chunksize)
+    else:
+        reader = pd.read_table(args.sumstats, dtype=str, sep=args.sep, chunksize=args.chunksize, header=None, names=args.header.split())
     reader_23_and_me = pd.read_table(args.all_snp_info_23_and_me, dtype=str, sep=args.sep, chunksize=args.chunksize) if args.all_snp_info_23_and_me else None
     n_snps = 0
     max_n_val = np.nan; max_ncase_val = np.nan; max_ncontrol_val = np.nan
