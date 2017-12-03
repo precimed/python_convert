@@ -240,6 +240,16 @@ def parse_args(args):
         help="Name of .afreq files, where symbol @ indicates chromosome index. Example: 1000G.EUR.QC.@.afreq")
     parser_frqtomat.set_defaults(func=frq_to_mat)
 
+    # 'ref-to-mat' utility: convert reference files  to .mat files
+    parser_reftomat = subparsers.add_parser("ref-to-mat",
+        help="Convert reference files to .mat files.")
+
+    parser_reftomat.add_argument("--ref", type=str, help="Tab-separated file with list of referense SNPs.")
+    parser_reftomat.add_argument("--out", type=str, help="[required] File to output the result.")
+    parser_reftomat.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
+    parser_reftomat.add_argument("--numeric-only", action="store_true", default=False, help="Save only numeric data (CHR, BP, GP), skip all other column (A1, A2, SNP).")
+    parser_reftomat.set_defaults(func=ref_to_mat)
+
     # 'diff-mat' utility: compare two .mat files with logpvec, zvec and nvec, and report the differences
     parser_diffmat = subparsers.add_parser("diff-mat",
         help="Compare two .mat files with logpvec, zvec and nvec, "
@@ -1065,6 +1075,26 @@ def frq_to_mat(args, log):
         log.log('{d} non-null values after merging with ref file'.format(d=df_frq[maf_col].notnull().sum()))
 
     save_dict['mafvec'] = df_frq[maf_col].values
+
+    sio.savemat(args.out, save_dict, format='5', do_compression=False, oned_as='column', appendmat=False)
+    log.log('Result written to {f}'.format(f=args.out))
+### =================================================================================
+###                          Implementation for ref_to_mat
+### =================================================================================
+def ref_to_mat(args, log):
+    check_input_file(args.ref)
+    check_output_file(args.out, args.force)
+
+    log.log('Reading reference file {}...'.format(args.ref))
+    ref_file = pd.read_table(args.ref, sep='\t')
+    log.log("Reference dict contains {d} snps.".format(d=len(ref_file)))
+
+    save_dict = {}
+    for col in ref_file.columns:
+        # skip fields SNP, A1, A2 because they are saved as cell array
+        if args.numeric_only and ref_file[col].dtype == object:
+            continue
+        save_dict[col] = ref_file[col].values
 
     sio.savemat(args.out, save_dict, format='5', do_compression=False, oned_as='column', appendmat=False)
     log.log('Result written to {f}'.format(f=args.out))
