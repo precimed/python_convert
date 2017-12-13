@@ -422,7 +422,7 @@ def make_csv(args, log):
 
             # Split CHR:POS column into two
             if cols.CHRPOS in chunk.columns:
-                chunk[cols.CHR], chunk[cols.BP] = chunk[cols.CHRPOS].str.split(':', 1).str
+                chunk[cols.CHR], chunk[cols.BP] = chunk[cols.CHRPOS].str.replace('_', ':').split(':', 1).str
                 chunk.drop(cols.CHRPOS, axis=1, inplace=True)
 
             # Split A1/A2 column into two
@@ -432,7 +432,7 @@ def make_csv(args, log):
 
             # Split CHR:POS:A1:A2 column into four
             if cols.CHRPOSA1A2 in chunk.columns:
-                chunk[cols.CHR], chunk[cols.BP], chunk[cols.A1], chunk[cols.A2] = chunk[cols.CHRPOSA1A2].str.split(':', 3).str
+                chunk[cols.CHR], chunk[cols.BP], chunk[cols.A1], chunk[cols.A2] = chunk[cols.CHRPOSA1A2].str.replace('_', ':').split(':', 3).str
                 chunk.drop(cols.CHRPOSA1A2, axis=1, inplace=True)
 
             # Ensure standard labels in CHR column
