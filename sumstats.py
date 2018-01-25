@@ -6,7 +6,6 @@ Various utilities for GWAS summary statistics.
 
 import pandas as pd
 import numpy as np
-from itertools import permutations
 from scipy import stats
 import scipy.io as sio
 import os
@@ -567,9 +566,10 @@ _base_complement = {"A":"T", "C":"G", "G":"C", "T":"A"}
 def _complement(seq):
     return "".join([_base_complement[b] for b in seq])
 
-ALLELES = "AGCT"
-COMPLEMENT = {''.join(s): _complement(s) for s in permutations(ALLELES, 2)}
-AMBIGUOUS = [aa for aa, cc in COMPLEMENT.items() if aa == cc[::-1]]
+def _reverse_complement_variant(variant):
+    # variant should be a 2-elemet sequence with upper case string elements
+    return ("".join([_base_complement[b] for b in variant[0][::-1]]),
+            "".join([_base_complement[b] for b in variant[1][::-1]]))
 
 def make_mat(args, log):
     """
@@ -641,11 +641,12 @@ def make_mat(args, log):
         chunksize=args.chunksize)
     ref_dict = {}
     for chunk in reader:
-        gtypes = (chunk[cols.A1] + chunk[cols.A2]).apply(str.upper)
+        gtypes = zip(chunk[cols.A1].apply(str.upper),chunk[cols.A2].apply(str.upper))
         #TODO?: add check whether some id is already in ref_dict
         ref_dict.update(dict(zip(chunk[cols.SNP], gtypes)))
-    ref_dict = {i: (aa, COMPLEMENT[aa], aa[::-1], COMPLEMENT[aa[::-1]])
-            for i, aa in ref_dict.items()}
+    ref_dict = {i: (variant, _reverse_complement_variant(variant),
+                    variant[::-1], _reverse_complement_variant(variant[::-1]))
+                for i, variant in ref_dict.items()}
     ref_snps = pd.read_table(args.ref, sep='\t', usecols=[cols.SNP], squeeze=True)
     #TODO?: add check whether ref_snps contains duplicates
     log.log("Reference dict contains {d} snps.".format(d=len(ref_dict)))
@@ -658,12 +659,11 @@ def make_mat(args, log):
         if i==0: log.log('Column types:\n\t' + '\n\t'.join([column + ':' + str(dtype) for (column, dtype) in zip(chunk.columns, chunk.dtypes)]))
         chunk = chunk.loc[chunk[cols.SNP].isin(ref_dict),:]
         if chunk.empty: continue
-        gtypes = (chunk[cols.A1] + chunk[cols.A2]).apply(str.upper)
+        gtypes = zip(chunk[cols.A1].apply(str.upper),chunk[cols.A2].apply(str.upper))
         # index of SNPs that have the same alleles as indicated in reference
-        ind = [gt in ref_dict[sid]
-            for sid, gt in zip(chunk[cols.SNP], gtypes)]
+        ind = [gt in ref_dict[sid] for sid, gt in zip(chunk[cols.SNP], gtypes)]
         chunk = chunk.loc[ind,:]
-        gtypes = gtypes[ind]
+        gtypes = [gt for gt, j in zip(gtypes, ind) if j]
         log10pv = -np.log10(chunk[cols.PVAL].values)
         # not_ref_effect = [
         #   1 if effect allele in data == other allele in reference
@@ -690,7 +690,7 @@ def make_mat(args, log):
             effect_sign[effect_sign == 0] = 1
         effect_sign *= not_ref_effect
         zvect = stats.norm.ppf(chunk[cols.PVAL].values*0.5)*effect_sign
-        ind_ambiguous = [j for j,gt in enumerate(gtypes) if gt in AMBIGUOUS]
+        ind_ambiguous = [j for j,gt in enumerate(gtypes) if gt == _reverse_complement_variant(gt)[::-1]]
         # set zscore of ambiguous SNPs to nan
         zvect[ind_ambiguous] = np.nan
         #TODO: check whether output df contains duplicated rs-ids (warn)
@@ -723,7 +723,7 @@ def make_mat(args, log):
     df_out = df_out[~df_out.index.duplicated(keep='first')]
     # allign index accordind order of SNPs in ref, insert NaN rows for SNPs that
     # present in ref but absent in sumstats file
-    df_out = df_out.loc[ref_snps,:]
+    df_out = df_out.reindex(ref_snps)
 
     log.log('Writing .mat file...')
 
