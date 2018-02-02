@@ -135,6 +135,8 @@ def parse_args(args):
         "Z (highest priority), BETA, OR, LOGODDS (lowest priority).")
     parser_mat.add_argument("--a1-inc", action="store_true", default=False,
         help='A1 is the increasing allele.')
+    parser_mat.add_argument("--ignore-alleles", action="store_true", default=False,
+        help="Load summary stats file ignoring alleles (only 'logpvec' is created in this case, entire 'zvec' is set to nan).")
     parser_mat.add_argument("--chunksize", default=100000, type=int,
         help="Size of chunk to read the file.")
     parser_mat.set_defaults(func=make_mat)
@@ -584,6 +586,24 @@ def make_mat(args, log):
 
     columns = list(pd.read_table(args.sumstats, sep='\t', nrows=0).columns)
     log.log('Columns in {}: {}'.format(args.sumstats, columns))
+
+    # very special handling of cases where input file has no alleles information
+    if args.ignore_alleles:
+        log.log('Ignore A1/A2 alleles from the input files')
+        if args.effect is not None: raise(ValueError('--effect argument is incompatible with --ignore-alleles'))
+        log.log('Reading reference file {}...'.format(args.ref))
+        df_ref = pd.read_table(args.ref, sep='\t', usecols=[cols.SNP])
+        log.log('Reading summary statistics file {}...'.format(args.sumstats))
+        df_sumstats = pd.read_table(args.sumstats, sep='\t', float_precision='high', usecols=[cols.SNP, cols.PVAL])
+        log.log('Merging with reference file...')
+        df_sumstats.drop_duplicates(subset=[cols.SNP], keep='first', inplace=True)
+        df_result = pd.merge(df_ref, df_sumstats, how='left', on='SNP')
+        num_matches = df_result[cols.PVAL].notnull().sum()
+        if num_matches == 0: raise(ValueError("No SNPs match after joining with reference data"))
+        print("{f}: {n} SNPs matched with reference file".format(f=args.sumstats, n=num_matches))
+        sio.savemat(args.out, {'logpvec'+args.trait: -np.log10(df_result[cols.PVAL].values)}, format='5', do_compression=False, oned_as='column', appendmat=False)
+        log.log("%s created" % args.out)
+        return
 
     # check whether arguments are correct
     if args.keep_all_cols and args.keep_cols:
@@ -1071,6 +1091,8 @@ def frq_to_mat(args, log):
     df_frq = pd.concat([pd.read_csv(frq.replace('@', str(chri)), delim_whitespace=True)  for chri in range(1, 23)])
     log.log('Input file contains {d} snps'.format(d=len(df_frq)))
     if args.ref:
+        df_frq.drop_duplicates(subset='SNP', inplace=True)
+        log.log('After drop duplicates, file contains {d} snps'.format(d=len(df_frq)))
         df_frq = pd.merge(ref_file[['SNP']], df_frq, how='left', left_on='SNP', right_on=snp_col)
         log.log('{d} non-null values after merging with ref file'.format(d=df_frq[maf_col].notnull().sum()))
 
@@ -1218,7 +1240,7 @@ def diff_mat(args, log):
 ### =================================================================================
 def sec_to_str(t):
     '''Convert seconds to days:hours:minutes:seconds'''
-    [d, h, m, s, n] = reduce(lambda ll, b : divmod(ll[0], b) + ll[1:], [(t, 1), 60, 60, 24])
+    [d, h, m, s, n] = six.moves.reduce(lambda ll, b : divmod(ll[0], b) + ll[1:], [(t, 1), 60, 60, 24])
     f = ''
     if d > 0:
         f += '{D}d:'.format(D=d)
