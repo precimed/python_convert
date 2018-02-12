@@ -721,7 +721,7 @@ def make_mat(args, log):
         chunk["logpvec"] = log10pv
         chunk["zvec"] = zvect
         if n_col is None:
-            nvec = 2./(1./chunk[ncase_col] + 1./chunk[ncontrol_col])
+            nvec = 4./(1./chunk[ncase_col] + 1./chunk[ncontrol_col])
         else:
             nvec = chunk[n_col].values
         chunk["nvec"] = nvec
