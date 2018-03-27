@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 '''
-(c) 2016 Oleksandr Frei and Alexey A. Shadrin
+(c) 2016-2018 Oleksandr Frei and Alexey A. Shadrin
 Various utilities for GWAS summary statistics.
 '''
 
@@ -20,12 +20,13 @@ import zipfile
 import glob
 import socket
 import getpass
+import subprocess
 
 __version__ = '1.0.0'
 MASTHEAD = "***********************************************************************\n"
 MASTHEAD += "* sumstats.py: utilities for GWAS summary statistics\n"
 MASTHEAD += "* Version {V}\n".format(V=__version__)
-MASTHEAD += "* (C) 2016-2017 Oleksandr Frei and Alexey A. Shadrin\n"
+MASTHEAD += "* (C) 2016-2018 Oleksandr Frei and Alexey A. Shadrin\n"
 MASTHEAD += "* Norwegian Centre for Mental Disorders Research / University of Oslo\n"
 MASTHEAD += "* GNU General Public License v3\n"
 MASTHEAD += "***********************************************************************\n"
@@ -166,6 +167,39 @@ def parse_args(args):
     parser_lift.add_argument("--gzip", action="store_true", default=False,
         help="A flag indicating whether to compress the resulting file with gzip.")
     parser_lift.set_defaults(func=make_lift)
+
+    # 'clump' utility: clump summary stats, produce lead SNP report, produce candidate SNP report
+    parser_clump = subparsers.add_parser("clump",
+        help="""Perform LD-based clumping of summary stats. This works as follows.
+    Step 1. Re-save summary stats into one file for each chromosome.
+    Step 2. Use 'plink --clump' to find clumps and lead SNPs
+    Step 3. Use 'plink --ld' to find genomic loci around each lead
+    Step 4. Merge together genomic loci which are closer than certain threshold (250 KB)
+    Step 5. Merge together genomic loci that fall into exclusion regions, such as MHC
+    Step 6. Output genomic loci report, indicating lead SNPs for each loci
+    Step 7. Output candidate SNP report""")
+    parser_clump.add_argument("--sumstats", type=str, help="[required] Input file with summary statistics")
+    parser_clump.add_argument("--out", type=str, help="[required] File to output the result.")
+    parser_clump.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
+
+    parser_clump.add_argument("--clump-field", type=str, default='PVAL', help="Column to clump on. For details see plink documentation.")
+    parser_clump.add_argument("--clump-snp-field", type=str, default='SNP', help="Column with marker name. For details see plink documentation.")
+    parser_clump.add_argument("--chr", type=str, default='CHR', help="Column name with chromosome labels. ")
+    parser_clump.add_argument("--clump-r2", type=float, default=0.1, help="LD r2 threshold for clumping lead SNPs. For details see plink documentation. ")
+    parser_clump.add_argument("--clump-p1", type=float, default=5e-8, help="lead variant p-value threshold. For details see plink documentation. ")
+    parser_clump.add_argument("--bfile-chr", type=str,
+        help="prefix for plink .bed/.bim/.fam file. Will automatically concatenate .bed/.bim/.fam files split across 22 chromosomes. "
+        "If the filename prefix contains the symbol @, sumstats.py will replace the @ symbol with chromosome numbers. "
+        "Otherwise, sumstats.py will append chromosome numbers to the end of the filename prefix. ")
+    parser_clump.add_argument("--ld-window-kb", type=float, default=10000, help="Window size in KB to search for clumped SNPs. ")
+    parser_clump.add_argument("--ld-window-r2", type=float, default=0.6, help="LD r2 threshold to search for clumped SNPs. ")
+    parser_clump.add_argument("--loci-merge-kb", type=float, default=250, help="Maximum distance in KB of LD blocks to merge. ")
+    parser_clump.add_argument("--exclude-ranges", type=str, nargs='+',
+        help='Exclude SNPs in ranges of base pair position, for example MHC. '
+        'The syntax is chr:from-to, for example 6:25000000-35000000. Multiple regions can be excluded.')
+    parser_clump.add_argument("--plink", type=str, default='plink', help="Path to plink executable.")
+
+    parser_clump.set_defaults(func=make_clump)
 
     # 'rs' utility: augument summary statistic file with SNP RS number from reference file
     parser_rs = subparsers.add_parser("rs",
@@ -490,17 +524,7 @@ def make_qc(args, log):
     check_input_file(args.sumstats)
     check_output_file(args.out, args.force)
 
-    # Interpret --exclude-ranges input
-    ChromosomeRange = collections.namedtuple('ChromosomeRange', ['chr', 'from_bp', 'to_bp'])
-    exclude_ranges = []
-    if args.exclude_ranges is not None:
-        for exclude_range in args.exclude_ranges:
-            try:
-                range = ChromosomeRange._make([int(x) for x in exclude_range.replace(':', ' ').replace('-', ' ').split()[:3]])
-            except Exception as e:
-                raise(ValueError('Unable to interpret exclude range "{}", chr:from-to format is expected.'.format(exclude_range)))
-            exclude_ranges.append(range)
-            log.log('Exclude SNPs on chromosome {} from BP {} to {}'.format(range.chr, range.from_bp, range.to_bp))
+    exclude_ranges = make_ranges(args.exclude_ranges, log)
 
     if args.dropna_cols is None: args.dropna_cols = []
     if args.fix_dtype_cols is None: args.fix_dtype_cols = []
@@ -888,6 +912,81 @@ def make_lift(args, log):
     log.log("{n} SNPs saved to {f}".format(n=len(df), f=args.out))
     describe_sample_size(df, log)
     log.log('Summary: \n\t{}'.format("\n\t".join(fixes)))
+
+### =================================================================================
+###                          Implementation for parser_clump
+### =================================================================================
+def make_clump(args, log):
+    """
+    Clump summary stats, produce lead SNP report, produce candidate SNP report
+    TBD: refine output tables
+    TBD: in snps table, do an outer merge - e.i, include SNPs that pass p-value threshold (some without locus number), and SNPs without p-value (e.i. from reference genotypes)
+    """
+    check_input_file(args.sumstats)
+    #check_output_file(args.out, args.force)
+    #for chri in range(1, 23):
+    #    check_input_file(sub_chr(args.bfile_chr, chri) + '.bed')
+    exclude_ranges = make_ranges(args.exclude_ranges, log)
+
+    log.log('Reading {}...'.format(args.sumstats))
+    df_sumstats = pd.read_table(args.sumstats, delim_whitespace=True)
+    log.log('Read {} SNPs from --sumstats file'.format(len(df_sumstats)))
+
+    for cname in [args.clump_field, args.clump_snp_field, args.chr]:
+        if cname not in df_sumstats.columns:
+            raise ValueError('{} column not found in {}; available columns: '.format(cname, args.sumstats, df_sumstats.columns))
+
+    for chri in range(1, 23):
+        break           # TBD
+        if not args.bfile_chr:
+            break
+
+        df_sumstats[df_sumstats[args.chr] == chri].to_csv('{}.sumstats.chr{}.csv'.format(args.out, chri),sep='\t',index=False)
+        execute_command(
+            "{} ".format(args.plink) +
+            "--bfile {} ".format(sub_chr(args.bfile_chr, chri)) +
+            "--clump {}.sumstats.chr{}.csv ".format(args.out, chri) +
+            "--clump-p1 {} --clump-p2 1 ".format(args.clump_p1) + 
+            "--clump-r2 {} --clump-kb 1e9 ".format(args.clump_r2) +
+            "--clump-snp-field {} --clump-field {} ".format(args.clump_snp_field, args.clump_field) +
+            "--out {}.chr{} ".format(args.out, chri),
+            log)
+        if not os.path.isfile('{}.chr{}.clumped'.format(args.out, chri)): continue
+        pd.read_table('{}.chr{}.clumped'.format(args.out, chri), delim_whitespace=True)['SNP'].to_csv('{}.chr{}.clumped.snps'.format(args.out, chri), index=False, header=False)
+        execute_command(
+            "{} ".format(args.plink) + 
+            "--bfile {} ".format(sub_chr(args.bfile_chr, chri)) +
+            "--r2 --ld-window {} --ld-window-r2 {} ".format(args.ld_window_kb, args.ld_window_r2) +
+            "--ld-snp-list {out}.chr{chri}.clumped.snps ".format(out=args.out, chri=chri) +
+            "--out  {out}.chr{chri} ".format(out=args.out, chri=chri),
+            log)
+
+    # group loci together
+    files = ["{out}.chr{chri}.ld".format(out=args.out, chri=chri) for chri in range(1, 23)]
+    df_cand=pd.concat([pd.read_table(file, delim_whitespace=True) for file in files if os.path.isfile(file)])
+    df_sumstats.drop_duplicates(subset=args.clump_snp_field, inplace=True)
+    df_cand = pd.merge(df_cand, df_sumstats, how='left', left_on='SNP_B', right_on=args.clump_snp_field)
+    df_cand.to_csv('{}.snps.csv'.format(args.out), sep='\t', index=False)
+    df_loci=df_cand.groupby(['SNP_A', 'CHR_A']).agg({'BP_B':['min', 'max']})
+    df_loci.reset_index(inplace=True)
+    df_loci.columns=['SNP_A', 'CHR_A', 'MinBP', 'MaxBP']
+    df_loci=df_loci.sort_values(['CHR_A', 'MinBP']).reset_index(drop=True)
+    df_loci['locusnum'] = df_loci.index + 1
+    df_loci = pd.merge(df_loci, df_sumstats[[args.clump_snp_field, args.clump_field]], how='left', left_on='SNP_A', right_on=args.clump_snp_field)
+    while True:
+        df_loci['MaxBPprev'] = [(df_loci['MaxBP'][i-1] if ((i > 0) and (df_loci['CHR_A'][i] == df_loci['CHR_A'][i-1]))  else np.nan) for i in range(len(df_loci))] 
+        df_loci['dist2prev'] = df_loci['MinBP'] - df_loci['MaxBPprev']
+        df_loci['locusnum2'] = [ ( df_loci['locusnum'][i-1] if (df_loci['dist2prev'][i] < 250000) else df_loci['locusnum'][i] ) for i in range(len(df_loci))]
+        for exrange in exclude_ranges:
+            df_loci['locusnum2'] = [ ( df_loci['locusnum2'][i-1] if ((df_loci['CHR_A'][i] == exrange.chr) and (df_loci['MaxBPprev'][i] >= exrange.from_bp) and (df_loci['MinBP'][i] <= exrange.to_bp)) else df_loci['locusnum2'][i] ) for i in range(len(df_loci))]
+        if (df_loci['locusnum2'] == df_loci['locusnum']).all():
+            df_loci.drop(['locusnum2', 'dist2prev', 'MaxBPprev'], axis=1, inplace=True)
+            break
+        df_loci['locusnum'] = df_loci['locusnum2']
+
+    df_loci['locusnum'] = df_loci['locusnum'].map({l:i+1 for (i, l) in enumerate(df_loci['locusnum'].unique())})
+    df_loci['is_lead'] = (df_loci[args.clump_field] == df_loci.groupby(['locusnum'])[args.clump_field].transform(min))
+    df_loci.to_csv('{}.loci.csv'.format(args.out), sep='\t', index=False)
 
 ### =================================================================================
 ###                          Implementation for parser_rs
@@ -1293,6 +1392,34 @@ def wait_for_system_memory(log):
             time.sleep(5)
     except ImportError:
         pass
+
+def sub_chr(s, chr):
+    '''Substitute chr for @, else append chr to the end of str.'''
+    if '@' not in s:
+        s += '@'
+
+    return s.replace('@', str(chr))
+
+def execute_command(command, log):
+    log.log("Execute command: {}".format(command))
+    exit_code = subprocess.call(command.split())
+    log.log('Done. Exit code: {}'.format(exit_code))
+    return exit_code
+
+def make_ranges(args_exclude_ranges, log):
+    # Interpret --exclude-ranges input
+    ChromosomeRange = collections.namedtuple('ChromosomeRange', ['chr', 'from_bp', 'to_bp'])
+    exclude_ranges = []
+    if args_exclude_ranges is not None:
+        for exclude_range in args_exclude_ranges:
+            try:
+                range = ChromosomeRange._make([int(x) for x in exclude_range.replace(':', ' ').replace('-', ' ').split()[:3]])
+            except Exception as e:
+                raise(ValueError('Unable to interpret exclude range "{}", chr:from-to format is expected.'.format(exclude_range)))
+            exclude_ranges.append(range)
+            log.log('Exclude range: chromosome {} from BP {} to {}'.format(range.chr, range.from_bp, range.to_bp))
+    return exclude_ranges
+
 
 ### =================================================================================
 ###                                Main section
