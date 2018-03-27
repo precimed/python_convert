@@ -937,7 +937,6 @@ def make_clump(args, log):
             raise ValueError('{} column not found in {}; available columns: '.format(cname, args.sumstats, df_sumstats.columns))
 
     for chri in range(1, 23):
-        break           # TBD
         if not args.bfile_chr:
             break
 
