@@ -260,6 +260,8 @@ def parse_args(args):
         help="Name of .M files, where symbol @ indicates chromosome index. Example: baseline.@.l2.M")
     parser_ldsctomat.add_argument("--M-5-50", type=str, default=None,
         help="Name of .M_5_50 files, where symbol @ indicates chromosome index. Example: baseline.@.l2.M_5_50")
+    parser_ldsctomat.add_argument("--chr-labels", type=str, nargs='+',
+        help="List of chromosome labels to substitute for @, default to 1..22")
     parser_ldsctomat.set_defaults(func=ldsc_to_mat)
 
     # 'frq-to-mat' utility: convert allele frequency from FRQ plink format to .mat files
@@ -273,6 +275,8 @@ def parse_args(args):
         help="Name of .frq files, where symbol @ indicates chromosome index. Example: 1000G.EUR.QC.@.frq")
     parser_frqtomat.add_argument("--afreq", type=str, default=None,
         help="Name of .afreq files, where symbol @ indicates chromosome index. Example: 1000G.EUR.QC.@.afreq")
+    parser_frqtomat.add_argument("--chr-labels", type=str, nargs='+',
+        help="List of chromosome labels to substitute for @, default to 1..22")
     parser_frqtomat.set_defaults(func=frq_to_mat)
 
     # 'ref-to-mat' utility: convert reference files  to .mat files
@@ -975,7 +979,7 @@ def make_clump(args, log):
     while True:
         df_loci['MaxBPprev'] = [(df_loci['MaxBP'][i-1] if ((i > 0) and (df_loci['CHR_A'][i] == df_loci['CHR_A'][i-1]))  else np.nan) for i in range(len(df_loci))] 
         df_loci['dist2prev'] = df_loci['MinBP'] - df_loci['MaxBPprev']
-        df_loci['locusnum2'] = [ ( df_loci['locusnum'][i-1] if (df_loci['dist2prev'][i] < 250000) else df_loci['locusnum'][i] ) for i in range(len(df_loci))]
+        df_loci['locusnum2'] = [ ( df_loci['locusnum'][i-1] if (df_loci['dist2prev'][i] < (1000 * args.loci_merge_kb)) else df_loci['locusnum'][i] ) for i in range(len(df_loci))]
         for exrange in exclude_ranges:
             df_loci['locusnum2'] = [ ( df_loci['locusnum2'][i-1] if ((df_loci['CHR_A'][i] == exrange.chr) and (df_loci['MaxBPprev'][i] >= exrange.from_bp) and (df_loci['MinBP'][i] <= exrange.to_bp)) else df_loci['locusnum2'][i] ) for i in range(len(df_loci))]
         if (df_loci['locusnum2'] == df_loci['locusnum']).all():
@@ -1094,7 +1098,9 @@ def mat_to_csv(args, log):
 def ldsc_to_mat(args, log):
     check_input_file(args.ref)
     if args.sumstats: check_input_file(args.sumstats)
-    for chri in range(1, 23):
+    if args.chr_labels is None:
+        args.chr_labels = list(range(1, 23))
+    for chri in args.chr_labels:
         if args.ldscore: check_input_file(args.ldscore.replace('@', str(chri)))
         if args.annot: check_input_file(args.annot.replace('@', str(chri)))
         if args.M: check_input_file(args.M.replace('@', str(chri)))
@@ -1131,7 +1137,7 @@ def ldsc_to_mat(args, log):
         save_dict['nvec'] = df_sumstats["N"].values
 
     if args.ldscore:
-        df_ldscore = pd.concat([pd.read_csv(args.ldscore.replace('@', str(chri)), delim_whitespace=True)  for chri in range(1, 23)])
+        df_ldscore = pd.concat([pd.read_csv(args.ldscore.replace('@', str(chri)), delim_whitespace=True)  for chri in args.chr_labels])
         df_ldscore.drop([x for x in ['CHR', 'BP', 'CM', 'MAF'] if x in df_ldscore], inplace=True, axis=1)
         log.log('Shape of ldscore file: {shape}'.format(shape=df_ldscore.shape))
         df_ldscore = pd.merge(ref_file[['SNP']], df_ldscore, how='left', on='SNP')
@@ -1141,7 +1147,7 @@ def ldsc_to_mat(args, log):
         save_dict['annomat'] = df_ldscore.values
 
     if args.annot:
-        df_annot = pd.concat([pd.read_csv(args.annot.replace('@', str(chri)), delim_whitespace=True)  for chri in range(1, 23)])
+        df_annot = pd.concat([pd.read_csv(args.annot.replace('@', str(chri)), delim_whitespace=True)  for chri in args.chr_labels])
         df_annot.drop([x for x in ['CHR', 'BP', 'CM', 'MAF'] if x in df_annot], inplace=True, axis=1)
         log.log('Shape of annots file: {shape}'.format(shape=df_annot.shape))
         df_annot = pd.merge(ref_file[['SNP']], df_annot, how='left', on='SNP')
@@ -1151,13 +1157,13 @@ def ldsc_to_mat(args, log):
         save_dict['annomat_bin'] = df_annot.values
 
     if args.M_5_50:
-        m_5_50 = pd.concat([pd.read_csv(args.M_5_50.replace('@', str(chri)), delim_whitespace=True, header=None) for chri in range(1, 23)])
+        m_5_50 = pd.concat([pd.read_csv(args.M_5_50.replace('@', str(chri)), delim_whitespace=True, header=None) for chri in args.chr_labels])
         m_5_50 = np.atleast_2d(m_5_50.sum().values)
         log.log('M_5_50={}'.format(m_5_50))
         save_dict['M_5_50']=m_5_50
 
     if args.M:
-        m = pd.concat([pd.read_csv(args.M.replace('@', str(chri)), delim_whitespace=True, header=None) for chri in range(1, 23)])
+        m = pd.concat([pd.read_csv(args.M.replace('@', str(chri)), delim_whitespace=True, header=None) for chri in args.chr_labels])
         m = np.atleast_2d(m.sum().values)
         log.log('M={}'.format(m))
         save_dict['M']=m
@@ -1171,12 +1177,14 @@ def ldsc_to_mat(args, log):
 def frq_to_mat(args, log):
     if args.ref:
         check_input_file(args.ref)
+    if args.chr_labels is None:
+        args.chr_labels = list(range(1, 23))
     if args.frq and args.afreq:
         raise ValueError('--frq and --afreq must not be used together')
     frq = args.frq if args.frq else args.afreq
     snp_col = 'SNP' if args.frq else 'ID'
     maf_col = 'MAF' if args.frq else 'ALT_FREQS'
-    for chri in range(1, 23):
+    for chri in args.chr_labels:
         check_input_file(frq.replace('@', str(chri)))
     check_output_file(args.out, args.force)
 
@@ -1186,7 +1194,7 @@ def frq_to_mat(args, log):
         log.log("Reference dict contains {d} snps.".format(d=len(ref_file)))
 
     save_dict = {}
-    df_frq = pd.concat([pd.read_csv(frq.replace('@', str(chri)), delim_whitespace=True)  for chri in range(1, 23)])
+    df_frq = pd.concat([pd.read_csv(frq.replace('@', str(chri)), delim_whitespace=True)  for chri in args.chr_labels])
     log.log('Input file contains {d} snps'.format(d=len(df_frq)))
     if args.ref:
         df_frq.drop_duplicates(subset='SNP', inplace=True)
