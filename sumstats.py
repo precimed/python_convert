@@ -309,8 +309,11 @@ def parse_args(args):
         'See description of --r2-min option for additional details. ')
     parser_ldsum.add_argument('--per-allele', default=False, action='store_true',
         help='Setting this flag causes sumstats.py to compute per-allele LD Scores, '
-        'i.e., \ell_j := \sum_k p_k(1-p_k)r^2_{jk}, where p_k denotes the MAF '
-        'of SNP j. Require --frq parameter to be specified.')
+        'i.e., '
+        '\ell2_j := \sum_k  2*p_k(1-p_k)    r^2_{jk}, and '
+        '\ell4_j := \sum_k (2*p_k(1-p_k))^2 r^4_{jk}, '
+        'where p_k denotes the MAF of SNP j. '
+        'Require --frq parameter to be specified. ')
     parser_ldsum.add_argument("--frq", type=str, default=None, help="Name of the .frq file.")
     parser_ldsum.add_argument('--not-diag', default=False, action='store_true',
         help='sumstats.py assume that plink-generated --ld file does not have diagonal elements, '
