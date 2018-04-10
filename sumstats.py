@@ -301,9 +301,13 @@ def parse_args(args):
 
     parser_ldsum.add_argument('--r2-min', default=None, type=float, nargs='+',
         help='Lower bound (exclusive) of r2 to consider in ld score estimation. '
-        'Intended usage of this parameter is to create a binned histogram of l2 or l4 values. '
-        'For this reason --r2-min and --r2-max are always applied directly to the r2 estimates of allelic correlation, regardless --per-allele flag, '
-        'to ensure that "--r2-min 0 --r2-max 1" cover the entire range of r2 values. ')
+        'Should be used in conjunction with --r2-max. ' 
+        'Intended usage of this parameter is to create a binned histogram of l2 or l4 values, for example: '
+        '"--r2-min 0.00 0.25 0.50 0.75 --r2-max 0.25 0.50 0.75 1.00". '
+        'Normally --r2-min and --r2-max should cover the range from 0 to 1. '
+        'In case of --per-allele flag, --r2-min and --r2-max thresholds apply to the product of allelic correlation and heterozigosity, '
+        'e.i. to r2_{jk} * 2*p_k*(1-p_k), where p_k denotes the MAF of SNP k. '
+        'To produce a complete histogram in case of --per-allele flag one must use --r2-min and --r2-max that cover the range from 0 to 0.5. ')
     parser_ldsum.add_argument('--r2-max', default=None, type=float, nargs='+',
         help='Upper bound (inclusive) of r2 to consider in ld score estimation. '
         'See description of --r2-min option for additional details. ')
@@ -312,7 +316,7 @@ def parse_args(args):
         'i.e., '
         '\ell2_j := \sum_k  2*p_k(1-p_k)    r^2_{jk}, and '
         '\ell4_j := \sum_k (2*p_k(1-p_k))^2 r^4_{jk}, '
-        'where p_k denotes the MAF of SNP j. '
+        'where p_k denotes the MAF of SNP k. '
         'Require --frq parameter to be specified. ')
     parser_ldsum.add_argument("--frq", type=str, default=None, help="Name of the .frq file.")
     parser_ldsum.add_argument('--not-diag', default=False, action='store_true',
@@ -1303,9 +1307,9 @@ def ldsum(args, log):
         if len(frq) != len(ref):
             raise(ValueError('--frq file is not consistent with --ref file'))
         log.log('Done, {} markers found'.format(len(frq)))
-        hvec = 2 * np.multiply(frq['MAF'].values, 1.0 - frq['MAF'].values).reshape([len(ref), 1])
+        ref['HVEC'] = 2 * np.multiply(frq['MAF'].values, 1.0 - frq['MAF'].values)
     else:
-        hvec = np.ones([len(ref), 1])
+        ref['HVEC'] = 1
 
     l2 = ref[['CHR', 'SNP', 'BP']].copy()
     l4 = ref[['CHR', 'SNP', 'BP']].copy()
@@ -1316,12 +1320,29 @@ def ldsum(args, log):
 
     log.log('Reading {} in chunks of {} lines at a time...'.format(args.ld, args.chunksize))
     n_snps = 0
-    for chunk_index, ld in enumerate(pd.read_table(args.ld, delim_whitespace=True, chunksize=args.chunksize)):
+    for chunk_index, ld in enumerate(pd.read_table(args.ld, delim_whitespace=True, chunksize=args.chunksize, usecols=['SNP_A', 'SNP_B', 'R2'])):
+        n_snps += len(ld)
+
+        ld_t = ld.copy()
+        ld_t['SNP_A'] = ld['SNP_B']
+        ld_t['SNP_B'] = ld['SNP_A']
+        ld = pd.concat([ld, ld_t])
+
+        incl_diag = ''
+        if (not args.not_diag) and (chunk_index==0):
+            ld_diag = ref[['SNP', 'SNP']].copy()
+            ld_diag.columns = ['SNP_A', 'SNP_B']
+            ld_diag['R2'] = 1.0
+            ld = pd.concat([ld, ld_diag])
+            incl_diag = ' (including diagonal)'
+
         ld = pd.merge(ld, ref[['SNP_A','INDEX_A']], how='left', on='SNP_A')
-        ld = pd.merge(ld, ref[['SNP_B','INDEX_B']], how='left', on='SNP_B')
+        ld = pd.merge(ld, ref[['SNP_B','INDEX_B', 'HVEC']], how='left', on='SNP_B')
+
+        # Set r2 to the product of H2 and HVEC (the later could be 1.0, when one runs without --per-allele)
+        ld['R2'] = np.multiply(ld['R2'].values, ld['HVEC'].values)
 
         r2_per_bin = np.zeros(len(args.r2_min))
-        incl_diag = ''
         for r2_bin, (r2_min, r2_max) in enumerate(zip(args.r2_min, args.r2_max)):
             suffix = '.{}'.format(r2_bin) if len(args.r2_min) > 0 else ''
             ld['idx'] = True
@@ -1329,24 +1350,17 @@ def ldsum(args, log):
             if (r2_max is not None): ld['idx'] = ld['idx'] & (ld['R2'] <= r2_max)
             idx = ld['idx'].values
 
-            vals = np.hstack([ld['R2'][idx].values, ld['R2'][idx].values])
-            rows = np.hstack([ld['INDEX_A'][idx].values, ld['INDEX_B'][idx].values])
-            cols = np.hstack([ld['INDEX_B'][idx].values, ld['INDEX_A'][idx].values])
-
-            if (not args.not_diag) and (chunk_index==0) and ((r2_min is None) or (r2_min <= 1)) and ((r2_max is None) or (r2_max > 1)):
-                vals = np.hstack([vals, np.ones(len(ref))])
-                rows = np.hstack([rows, np.arange(len(ref))])
-                cols = np.hstack([cols, np.arange(len(ref))])
-                incl_diag = ' (including diagonal)'
+            vals = ld['R2'][idx].values
+            rows = ld['INDEX_A'][idx].values
+            cols = ld['INDEX_B'][idx].values
 
             csr     = scipy.sparse.coo_matrix((vals,              (rows, cols)), shape=(len(ref), len(ref))).tocsr()
             csr_sqr = scipy.sparse.coo_matrix((np.power(vals, 2), (rows, cols)), shape=(len(ref), len(ref))).tocsr()
             r2_per_bin[r2_bin] = csr.nnz
 
-            l2['L2' + suffix] += csr.dot(hvec).reshape(len(ref))
-            l4['L4' + suffix] += csr_sqr.dot(np.power(hvec, 2)).reshape(len(ref))
+            l2['L2' + suffix] += csr.dot(np.ones((len(ref), 1))).reshape(len(ref))
+            l4['L4' + suffix] += csr_sqr.dot(np.ones((len(ref), 1))).reshape(len(ref))
 
-        n_snps += len(ld)
         print("{f}: {n} lines finished, number of r2 in the last --l2 chunk: {r}{d}".format(f=args.ld, n=n_snps,r=', '.join([str(int(x)) for x in r2_per_bin]), d=incl_diag))
 
     log.log('Writting {}...'.format(args.out + ".l2.ldscore.gz"))
