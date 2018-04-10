@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 from scipy import stats
 import scipy.io as sio
+import scipy.sparse
 import os
 import time, sys, traceback
 import argparse
@@ -288,6 +289,37 @@ def parse_args(args):
     parser_reftomat.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
     parser_reftomat.add_argument("--numeric-only", action="store_true", default=False, help="Save only numeric data (CHR, BP, GP), skip all other column (A1, A2, SNP).")
     parser_reftomat.set_defaults(func=ref_to_mat)
+
+    # 'ldsum' utility: convert plink .ld.gz files (pairwise ld r2) to ld scores
+    parser_ldsum = subparsers.add_parser("ldsum",
+        help="convert plink .ld.gz files (pairwise ld r2) to ld scores")
+
+    parser_ldsum.add_argument("--bim", type=str, help="[required] plink bim file")
+    parser_ldsum.add_argument("--ld", type=str, help="[required] plink .ld file")
+    parser_ldsum.add_argument("--out", type=str, help="[required] File to output the result.")
+    parser_ldsum.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
+
+    parser_ldsum.add_argument('--r2-min', default=None, type=float, nargs='+',
+        help='Lower bound (exclusive) of r2 to consider in ld score estimation. '
+        'Intended usage of this parameter is to create a binned histogram of l2 or l4 values. '
+        'For this reason --r2-min and --r2-max are always applied directly to the r2 estimates of allelic correlation, regardless --per-allele flag, '
+        'to ensure that "--r2-min 0 --r2-max 1" cover the entire range of r2 values. ')
+    parser_ldsum.add_argument('--r2-max', default=None, type=float, nargs='+',
+        help='Upper bound (inclusive) of r2 to consider in ld score estimation. '
+        'See description of --r2-min option for additional details. ')
+    parser_ldsum.add_argument('--per-allele', default=False, action='store_true',
+        help='Setting this flag causes sumstats.py to compute per-allele LD Scores, '
+        'i.e., \ell_j := \sum_k p_k(1-p_k)r^2_{jk}, where p_k denotes the MAF '
+        'of SNP j. Require --frq parameter to be specified.')
+    parser_ldsum.add_argument("--frq", type=str, default=None, help="Name of the .frq file.")
+    parser_ldsum.add_argument('--not-diag', default=False, action='store_true',
+        help='sumstats.py assume that plink-generated --ld file does not have diagonal elements, '
+        'e.i. does not contain LD r2 entries of 1.0 for variant r2 with itself. '
+        'By default sumstats.py adds such diagonal entries to the LD score. '
+        'Setting --not-diag flag causes sumstats.py to NOT to add the diagonal elements. ')
+    parser_ldsum.add_argument("--chunksize", default=10000000, type=int,
+        help="Size of chunk to read the --ld file.")
+    parser_ldsum.set_defaults(func=ldsum)
 
     # 'diff-mat' utility: compare two .mat files with logpvec, zvec and nvec, and report the differences
     parser_diffmat = subparsers.add_parser("diff-mat",
@@ -1228,6 +1260,99 @@ def ref_to_mat(args, log):
     log.log('Result written to {f}'.format(f=args.out))
 
 ### =================================================================================
+###                          Implementation for ldsum
+### =================================================================================
+def ldsum(args, log):
+    # Adjust r2_min and  r2_max thresholds.
+    # They must be vectors (e.g. [None] instead of None).
+    # Values of 0.0 and 1.0 must be replaced with None to avoid filtering.
+    # Mathematicaly all r2 values are within [0, 1], but due to float-point precision
+    # some values may exceed 1 my small amount, and we don't want them to be filtered.
+    if args.r2_min is None: args.r2_min = [0.0]
+    if args.r2_max is None: args.r2_max = [1.0]
+    args.r2_min = [None if __isclose__(x, 0.0) else x for x in args.r2_min]
+    args.r2_max = [None if __isclose__(x, 1.0) else x for x in args.r2_max]
+
+    if len(args.r2_min) != len(args.r2_max):
+        raise(ValueError('--r2-min and --r2-max arguments must have equal length'))
+    if args.per_allele and not args.frq:
+        raise(ValueError('--frq argument is required for --per-allele'))
+
+    check_input_file(args.bim)
+    check_input_file(args.ld)
+    if args.frq and args.per_allele: check_input_file(args.frq)
+    check_output_file(args.out + ".l2.ldscore.gz", args.force)
+    check_output_file(args.out + ".l4.ldscore.gz", args.force)
+
+    log.log('Reading {}...'.format(args.bim))
+    ref = pd.read_table(args.bim, delim_whitespace=True, header=None, names=['CHR', 'SNP', 'GP', 'BP', 'A1', 'A2'])
+    ref['INDEX_A'] = ref.index
+    ref['INDEX_B'] = ref.index
+    ref['SNP_A'] = ref['SNP']
+    ref['SNP_B'] = ref['SNP']
+    if len(ref.drop_duplicates(subset=['SNP'], keep='first', inplace=False)) != len(ref):
+        raise(ValueError('--bim file contains duplicated markers, which is not allowed'))
+    log.log('Done, {} markers found'.format(len(ref)))
+
+    if args.frq and args.per_allele:
+        log.log('Reading {}...'.format(args.frq))
+        frq = pd.read_table(args.frq, delim_whitespace=True)
+        if len(frq) != len(ref):
+            raise(ValueError('--frq file is not consistent with --ref file'))
+        log.log('Done, {} markers found'.format(len(frq)))
+        hvec = 2 * np.multiply(frq['MAF'].values, 1.0 - frq['MAF'].values).reshape([len(ref), 1])
+    else:
+        hvec = np.ones([len(ref), 1])
+
+    l2 = ref[['CHR', 'SNP', 'BP']].copy()
+    l4 = ref[['CHR', 'SNP', 'BP']].copy()
+    for r2_bin, (r2_min, r2_max) in enumerate(zip(args.r2_min, args.r2_max)):
+        suffix = '.{}'.format(r2_bin) if len(args.r2_min) > 0 else ''
+        l2['L2' + suffix] = 0.0
+        l4['L4' + suffix] = 0.0
+
+    log.log('Reading {} in chunks of {} lines at a time...'.format(args.ld, args.chunksize))
+    n_snps = 0
+    for chunk_index, ld in enumerate(pd.read_table(args.ld, delim_whitespace=True, chunksize=args.chunksize)):
+        ld = pd.merge(ld, ref[['SNP_A','INDEX_A']], how='left', on='SNP_A')
+        ld = pd.merge(ld, ref[['SNP_B','INDEX_B']], how='left', on='SNP_B')
+
+        r2_per_bin = np.zeros(len(args.r2_min))
+        incl_diag = ''
+        for r2_bin, (r2_min, r2_max) in enumerate(zip(args.r2_min, args.r2_max)):
+            suffix = '.{}'.format(r2_bin) if len(args.r2_min) > 0 else ''
+            ld['idx'] = True
+            if (r2_min is not None): ld['idx'] = ld['idx'] & (ld['R2'] > r2_min)
+            if (r2_max is not None): ld['idx'] = ld['idx'] & (ld['R2'] <= r2_max)
+            idx = ld['idx'].values
+
+            vals = np.hstack([ld['R2'][idx].values, ld['R2'][idx].values])
+            rows = np.hstack([ld['INDEX_A'][idx].values, ld['INDEX_B'][idx].values])
+            cols = np.hstack([ld['INDEX_B'][idx].values, ld['INDEX_A'][idx].values])
+
+            if (not args.not_diag) and (chunk_index==0) and ((r2_min is None) or (r2_min <= 1)) and ((r2_max is None) or (r2_max > 1)):
+                vals = np.hstack([vals, np.ones(len(ref))])
+                rows = np.hstack([rows, np.arange(len(ref))])
+                cols = np.hstack([cols, np.arange(len(ref))])
+                incl_diag = ' (including diagonal)'
+
+            csr     = scipy.sparse.coo_matrix((vals,              (rows, cols)), shape=(len(ref), len(ref))).tocsr()
+            csr_sqr = scipy.sparse.coo_matrix((np.power(vals, 2), (rows, cols)), shape=(len(ref), len(ref))).tocsr()
+            r2_per_bin[r2_bin] = csr.nnz
+
+            l2['L2' + suffix] += csr.dot(hvec).reshape(len(ref))
+            l4['L4' + suffix] += csr_sqr.dot(np.power(hvec, 2)).reshape(len(ref))
+
+        n_snps += len(ld)
+        print("{f}: {n} lines finished, number of r2 in the last --l2 chunk: {r}{d}".format(f=args.ld, n=n_snps,r=', '.join([str(int(x)) for x in r2_per_bin]), d=incl_diag))
+
+    log.log('Writting {}...'.format(args.out + ".l2.ldscore.gz"))
+    l2.to_csv(args.out + ".l2.ldscore.gz", sep='\t', index=False, compression='gzip')
+    log.log('Writting {}...'.format(args.out + ".l4.ldscore.gz"))
+    l4.to_csv(args.out + ".l4.ldscore.gz", sep='\t', index=False, compression='gzip')
+    log.log('Done.')
+
+### =================================================================================
 ###                          Implementation for diff_mat
 ### =================================================================================
 def diff_mat(args, log):
@@ -1427,6 +1552,8 @@ def make_ranges(args_exclude_ranges, log):
             log.log('Exclude range: chromosome {} from BP {} to {}'.format(range.chr, range.from_bp, range.to_bp))
     return exclude_ranges
 
+def __isclose__(a, b, rel_tol=1e-09, abs_tol=0.0):
+    return abs(a-b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
 
 ### =================================================================================
 ###                                Main section
