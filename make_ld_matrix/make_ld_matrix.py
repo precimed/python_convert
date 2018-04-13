@@ -73,6 +73,8 @@ def make_ld_matrix(args):
     print('Parsing {0}...'.format(args.ldfile))
     total_df = None
     for i, df in enumerate(reader):
+        df_len_original = len(df)
+        df = df[df['R2'] >= args.ld_window_r2].copy()
         id1tmp = [chrpos_to_id.get((chr, pos), None) for chr, pos in zip(df['CHR_A'], df['BP_A'])]
         id2tmp = [chrpos_to_id.get((chr, pos), None) for chr, pos in zip(df['CHR_B'], df['BP_B'])]
         mask = [(i1 is not None and i2 is not None) for i1, i2 in zip(id1tmp, id2tmp)]
@@ -81,7 +83,7 @@ def make_ld_matrix(args):
         val = [value for index, value in enumerate(df['R2']) if mask[index] == True]
         df_tmp = pd.DataFrame(data={'id1': id1, 'id2': id2, 'val': val})
         total_df = df_tmp if total_df is None else total_df.append(df_tmp, ignore_index=True)
-        print('\rFinish {0} entries ({1} after joining with ref)'.format(i * args.chunksize + len(mask), total_df.shape[0]))
+        print('\rFinish {0} entries ({1} after joining with ref and applying r2 threshold)'.format(i * args.chunksize + df_len_original, total_df.shape[0]))
     print('. Done.')
 
     print('Detecting duplicated entries...')
