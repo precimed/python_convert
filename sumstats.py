@@ -106,6 +106,10 @@ def parse_args(args):
         help='Filter SNPs with OR (odds ratio) exceeding specified threshold')
     parser_qc.add_argument("--update-z-col-from-beta-and-se",  action="store_true", default=False,
         help='Create or update Z score column from BETA and SE columns')
+    parser_qc.add_argument("--snps-only", action="store_true", default=False,
+        help="excludes all variants with one or more multi-character allele codes. ")
+    parser_qc.add_argument("--just-acgt", action="store_true",
+        help="similar to --snps-only, but variants with single-character allele codes outside of {'A', 'C', 'G', 'T', 'a', 'c', 'g', 't'} are also excluded.")
     parser_qc.set_defaults(func=make_qc)
 
     # 'mat' utility: load summary statistics into matlab format
@@ -524,8 +528,8 @@ def make_csv(args, log):
                 chunk[cols.CHR] = format_chr(chunk[cols.CHR])
 
             # Ensure that alleles are coded as capital letters
-            if cols.A1 in chunk.columns: chunk[cols.A1] = chunk[cols.A1].str.upper()
-            if cols.A2 in chunk.columns: chunk[cols.A2] = chunk[cols.A2].str.upper()
+            if cols.A1 in chunk.columns: chunk[cols.A1] = chunk[cols.A1].str.upper().str.strip()
+            if cols.A2 in chunk.columns: chunk[cols.A2] = chunk[cols.A2].str.upper().str.strip()
 
             # Populate sample size columns (NCASE, NCONTROL, N)
             if args.ncase_val is not None: chunk[cols.NCASE] = args.ncase_val
@@ -568,6 +572,19 @@ def describe_sample_size(sumstats, log):
         sumstats[cols.NCASE].max() if cols.NCASE in sumstats else np.nan,
         sumstats[cols.NCONTROL].max() if cols.NCONTROL in sumstats else np.nan))
 
+def drop_sumstats(sumstats, log, reason, drop_labels=None, dropna_subset=None):
+    '''Drop labels from sumstats, and log the number of excluded rows.'''
+    sumstats_len = len(sumstats)
+
+    if (drop_labels is not None) and drop_labels.any():
+        sumstats.drop(drop_labels, inplace=True)
+
+    if dropna_subset is not None:
+        sumstats.dropna(subset=dropna_subset, inplace=True)
+
+    if len(sumstats) != sumstats_len:
+        log.log('Drop {} markers ({})'.format(sumstats_len - len(sumstats), reason))
+
 def make_qc(args, log):
     check_input_file(args.sumstats)
     check_output_file(args.out, args.force)
@@ -598,33 +615,37 @@ def make_qc(args, log):
         raise(ValueError('BETA and SE columns are required for --update-z-col-from-beta-and-se'))
 
     if len(args.dropna_cols) > 0:
-        sumstats_len = len(sumstats)
-        sumstats.dropna(subset=args.dropna_cols, inplace=True)
-        if len(sumstats) != sumstats_len: log.log('Drop {} markers because of missing values'.format(sumstats_len - len(sumstats)))
+        drop_sumstats(sumstats, log, "missing values in either of '{}' columns".format(args.dropna_cols), dropna_subset=args.dropna_cols)
+
     for col in args.fix_dtype_cols:
         if col in sumstats:
             log.log('Set column {} dtype to {}'.format(col, cols_type_map[col]))
             if cols_type_map[col] in [float, np.float64, int]:
                 sumstats[col] = pd.to_numeric(sumstats[col], errors='coerce')
                 if col in args.dropna_cols:
-                    sumstats_len = len(sumstats)
-                    sumstats.dropna(subset=[col], inplace=True)
-                    if len(sumstats) != sumstats_len: log.log('Drop {} markers after dtype conversion'.format(sumstats_len - len(sumstats)))
+                    drop_sumstats(sumstats, log, "dtype conversion in {} column".format(col), dropna_subset=[col])
                 if cols_type_map[col] == int:
                     sumstats[col] = sumstats[col].astype(int)
             else:
                 sumstats[col] = sumstats[col].astype(cols_type_map[col])
+
     for range in exclude_ranges:
-        idx = (sumstats[cols.CHR] == range.chr) & (sumstats[cols.BP] >= range.from_bp) & (sumstats[cols.BP] < range.to_bp)
-        if idx.sum() > 0:
-            log.log('Exclude {} SNPs in range {}:{}-{}'.format(idx.sum(), range.chr, range.from_bp, range.to_bp))
-            sumstats = sumstats[~idx].copy()
+        idx = sumstats.index[(sumstats[cols.CHR] == range.chr) & (sumstats[cols.BP] >= range.from_bp) & (sumstats[cols.BP] < range.to_bp)]
+        drop_sumstats(sumstats, log, 'exclude range {}:{}-{}'.format(idx.sum(), range.chr, range.from_bp, range.to_bp), drop_labels=idx)
+
     if args.max_or is not None and cols.OR in sumstats:
-        sumstats_len = len(sumstats)
-        sumstats.drop(sumstats.OR > args.max_or, inplace=True)
-        if len(sumstats) != sumstats_len: log.log('Drop {} markers because OR exceeded threshold'.format(sumstats_len - len(sumstats)))
+        drop_sumstats(sumstats, log, 'OR exceeded threshold {}'.format(args.max_or), drop_labels=sumstats.index[sumstats.OR > args.max_or])
+
     if args.update_z_col_from_beta_and_se:
-        sumstats['Z'] = np.divide(sumstats.BETA.values, sumstats.SE.values) 
+        sumstats['Z'] = np.divide(sumstats.BETA.values, sumstats.SE.values)
+
+    if args.snps_only:
+        drop_sumstats(sumstats, log, '--snp-only',
+            drop_labels=sumstats.index[(sumstats['A1'].str.len() != 1) | (sumstats['A2'].str.len() != 1)])
+
+    if args.just_acgt:
+        drop_sumstats(sumstats, log, '--just-acgt',
+            drop_labels=sumstats.index[np.logical_not(sumstats['A1'].isin(BASES)) | np.logical_not(sumstats['A2'].isin(BASES))])
 
     sumstats.to_csv(args.out, index=False, header=True, sep='\t', na_rep='NA')
     log.log("{n} SNPs saved to {f}".format(n=len(sumstats), f=args.out))
