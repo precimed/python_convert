@@ -97,23 +97,26 @@ def parse_args(args):
 
     parser_qc.add_argument("--exclude-ranges", type=str, nargs='+',
         help='Exclude SNPs in ranges of base pair position, for example MHC. '
-        'The syntax is chr:from-to, for example 6:25000000-35000000. Multiple regions can be excluded.')
+        'The syntax is chr:from-to, for example 6:25000000-35000000. Multiple regions can be excluded. Require CHR and BP columns in sumstats file. ')
     parser_qc.add_argument("--dropna-cols", type=str, nargs='+',
         help='List of column names. SNPs with missing values in either of the columns will be excluded.')
     parser_qc.add_argument("--fix-dtype-cols", type=str, nargs='+',
         help='List of column names. Ensure appropriate data type for the columns (CHR, BP - int, PVAL - float, etc)')
     parser_qc.add_argument("--max-or", type=float, default=None,
-        help='Filter SNPs with OR (odds ratio) exceeding specified threshold')
+        help='Filter SNPs with OR exceeding threshold. Also applies to OR smaller than the inverse value of the threshold, '
+        'e.i. for --max-or 25 this QC procedure will exclude SNPs with OR above 25 and below 1/25. '
+        '--max-or values below 1 are also acceptable (they will be inverted). '
+        'This parameter is ignored when OR is not present in the sumstats file. ')
     parser_qc.add_argument("--update-z-col-from-beta-and-se",  action="store_true", default=False,
-        help='Create or update Z score column from BETA and SE columns')
+        help='Create or update Z score column from BETA and SE columns. This parameter is ignored when BETA or SE columns are not present in the sumstats file. ')
     parser_qc.add_argument("--snps-only", action="store_true", default=False,
-        help="excludes all variants with one or more multi-character allele codes. ")
+        help="excludes all variants with one or more multi-character allele codes. Require A1 and A2 columns in sumstats file. ")
     parser_qc.add_argument("--just-acgt", action="store_true",
-        help="similar to --snps-only, but variants with single-character allele codes outside of {'A', 'C', 'G', 'T' } are also excluded.")
+        help="similar to --snps-only, but variants with single-character allele codes outside of {'A', 'C', 'G', 'T' } are also excluded. Require A1 and A2 columns in sumstats file. ")
     parser_qc.add_argument("--drop-strand-ambiguous-snps", action="store_true", default=False,
-        help="excludes strand ambiguous SNPs (AT, CG).")
+        help="excludes strand ambiguous SNPs (AT, CG). Require A1 and A2 columns in sumstats file. ")
     parser_qc.add_argument("--just-rs-variants", action="store_true", default=False,
-        help="keeps only variants with an RS number")
+        help="keeps only variants with an RS number. Require SNP column in sumstats file. ")
     parser_qc.set_defaults(func=make_qc)
 
     # 'mat' utility: load summary statistics into matlab format
@@ -580,20 +583,22 @@ def drop_sumstats(sumstats, log, reason, drop_labels=None, dropna_subset=None):
     '''Drop labels from sumstats, and log the number of excluded rows.'''
     sumstats_len = len(sumstats)
 
-    if (drop_labels is not None) and drop_labels.any():
+    if drop_labels is not None:
         sumstats.drop(drop_labels, inplace=True)
 
     if dropna_subset is not None:
         sumstats.dropna(subset=dropna_subset, inplace=True)
 
-    if len(sumstats) != sumstats_len:
-        log.log('Drop {} markers ({})'.format(sumstats_len - len(sumstats), reason))
+    log.log('Drop {} markers ({})'.format(sumstats_len - len(sumstats), reason))
 
 def make_qc(args, log):
     check_input_file(args.sumstats)
     check_output_file(args.out, args.force)
 
     exclude_ranges = make_ranges(args.exclude_ranges, log)
+    if (args.max_or is not None) and (args.max_or < 1):
+        log.log('--max-or was changed from {} to {}'.format(args.max_or, 1/args.max_or))
+        args.max_or = 1 / args.max_or
 
     if args.dropna_cols is None: args.dropna_cols = []
     if args.fix_dtype_cols is None: args.fix_dtype_cols = []
@@ -605,23 +610,31 @@ def make_qc(args, log):
          for col in args.fix_dtype_cols:
             if cols_type_map[col] == int:
                 args.dropna_cols.append(col)
-    if args.max_or is not None:
-        args.fix_dtype_cols.append('OR')
 
-    if args.update_z_col_from_beta_and_se:
-        args.fix_dtype_cols.extend(['BETA', 'SE'])
-
+    # Read summary sumstats file...
     log.log('Reading sumstats file {}...'.format(args.sumstats))
     sumstats = pd.read_table(args.sumstats, sep='\t', dtype=str)
     log.log("Sumstats file contains {d} markers.".format(d=len(sumstats)))
 
+    # Adjust optional parameters (those that can be ignored if certain columns are missing)
+    if (args.max_or is not None) and ('OR' not in sumstats):
+        log.log('Warning: skip --max-or ("OR" column not found in {})'.format(args.sumstats))
+        args.max_or = None
+
     if args.update_z_col_from_beta_and_se and (('BETA' not in sumstats) or ('SE' not in sumstats)):
-        raise(ValueError('BETA and SE columns are required for --update-z-col-from-beta-and-se'))
+        log.log('Warning: can not apply update_z_col_from_beta_and_se ("OR" column not found in {})'.format(args.sumstats))
+        args.update_z_col_from_beta_and_se = False
+
+    if args.max_or is not None: args.fix_dtype_cols.append('OR')
+    if args.update_z_col_from_beta_and_se: args.fix_dtype_cols.extend(['BETA', 'SE'])
+
+    # Validate that all required columns are present
     if (args.just_acgt or args.snps_only or args.drop_strand_ambiguous_snps) and (('A1' not in sumstats) or ('A2' not in sumstats)):
         raise(ValueError('A1 and A2 columns are required for --just-acgt, --snps-only, --drop-strand-ambiguous-snps'))
     if (args.just_rs_variants) and ('SNP' not in sumstats):
         raise(ValueError('SNP column is required --just-rs-variants'))
 
+    # Perform QC procedures
     if len(args.dropna_cols) > 0:
         drop_sumstats(sumstats, log, "missing values in either of '{}' columns".format(args.dropna_cols), dropna_subset=args.dropna_cols)
 
@@ -642,7 +655,8 @@ def make_qc(args, log):
         drop_sumstats(sumstats, log, 'exclude range {}:{}-{}'.format(idx.sum(), range.chr, range.from_bp, range.to_bp), drop_labels=idx)
 
     if args.max_or is not None and cols.OR in sumstats:
-        drop_sumstats(sumstats, log, 'OR exceeded threshold {}'.format(args.max_or), drop_labels=sumstats.index[sumstats.OR > args.max_or])
+        drop_sumstats(sumstats, log, 'OR exceeded threshold {}'.format(args.max_or),
+            drop_labels=sumstats.index[(sumstats.OR > args.max_or) | (sumstats.OR < (1/args.max_or))])
 
     if args.update_z_col_from_beta_and_se:
         sumstats['Z'] = np.divide(sumstats.BETA.values, sumstats.SE.values)
