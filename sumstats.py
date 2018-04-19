@@ -102,11 +102,14 @@ def parse_args(args):
         help='List of column names. SNPs with missing values in either of the columns will be excluded.')
     parser_qc.add_argument("--fix-dtype-cols", type=str, nargs='+',
         help='List of column names. Ensure appropriate data type for the columns (CHR, BP - int, PVAL - float, etc)')
+    parser_qc.add_argument("--maf", type=float, default=None,
+        help='filters out all variants with minor allele frequency below the provided threshold'
+        'This parameter is ignored when FRQ column is not present in the sumstats file. ')
     parser_qc.add_argument("--max-or", type=float, default=None,
         help='Filter SNPs with OR exceeding threshold. Also applies to OR smaller than the inverse value of the threshold, '
         'e.i. for --max-or 25 this QC procedure will exclude SNPs with OR above 25 and below 1/25. '
         '--max-or values below 1 are also acceptable (they will be inverted). '
-        'This parameter is ignored when OR is not present in the sumstats file. ')
+        'This parameter is ignored when OR column is not present in the sumstats file. ')
     parser_qc.add_argument("--update-z-col-from-beta-and-se",  action="store_true", default=False,
         help='Create or update Z score column from BETA and SE columns. This parameter is ignored when BETA or SE columns are not present in the sumstats file. ')
     parser_qc.add_argument("--snps-only", action="store_true", default=False,
@@ -621,11 +624,16 @@ def make_qc(args, log):
         log.log('Warning: skip --max-or ("OR" column not found in {})'.format(args.sumstats))
         args.max_or = None
 
+    if (args.maf is not None) and ('FRQ' not in sumstats):
+        log.log('Warning: skip --maf ("FRQ" column not found in {})'.format(args.sumstats))
+        args.maf = None
+
     if args.update_z_col_from_beta_and_se and (('BETA' not in sumstats) or ('SE' not in sumstats)):
         log.log('Warning: can not apply update_z_col_from_beta_and_se ("OR" column not found in {})'.format(args.sumstats))
         args.update_z_col_from_beta_and_se = False
 
     if args.max_or is not None: args.fix_dtype_cols.append('OR')
+    if args.maf is not None: args.fix_dtype_cols.append('FRQ')
     if args.update_z_col_from_beta_and_se: args.fix_dtype_cols.extend(['BETA', 'SE'])
 
     # Validate that all required columns are present
@@ -654,9 +662,13 @@ def make_qc(args, log):
         idx = sumstats.index[(sumstats[cols.CHR] == range.chr) & (sumstats[cols.BP] >= range.from_bp) & (sumstats[cols.BP] < range.to_bp)]
         drop_sumstats(sumstats, log, 'exclude range {}:{}-{}'.format(idx.sum(), range.chr, range.from_bp, range.to_bp), drop_labels=idx)
 
-    if args.max_or is not None and cols.OR in sumstats:
+    if args.max_or is not None:
         drop_sumstats(sumstats, log, 'OR exceeded threshold {}'.format(args.max_or),
             drop_labels=sumstats.index[(sumstats.OR > args.max_or) | (sumstats.OR < (1/args.max_or))])
+
+    if args.maf is not None:
+        drop_sumstats(sumstats, log, 'MAF below threshold {}'.format(args.maf),
+            drop_labels=sumstats.index[sumstats.FRQ < args.maf])
 
     if args.update_z_col_from_beta_and_se:
         sumstats['Z'] = np.divide(sumstats.BETA.values, sumstats.SE.values)
