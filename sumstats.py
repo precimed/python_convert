@@ -108,6 +108,10 @@ def parse_args(args):
     parser_qc.add_argument("--info", type=float, default=None,
         help='filters out all variants with imputation INFO score below the provided threshold'
         'This parameter is ignored when INFO column is not present in the sumstats file. ')
+    parser_qc.add_argument("--qc-substudies", default=False, action="store_true",
+        help='filters out variants that pass QC and imputation is less than half of all studies in the meta-analysis '
+        '(i.e. "?" was seen in more than 1/2*N_studies in the METAL "direction" column)'
+        'This parameter is ignored when DIRECTION column is not present in the sumstats file. ')
     parser_qc.add_argument("--max-or", type=float, default=None,
         help='Filter SNPs with OR exceeding threshold. Also applies to OR smaller than the inverse value of the threshold, '
         'e.i. for --max-or 25 this QC procedure will exclude SNPs with OR above 25 and below 1/25. '
@@ -601,9 +605,9 @@ def make_qc(args, log):
     check_input_file(args.sumstats)
     check_output_file(args.out, args.force)
 
-    if args.max_or <= 0: raise(ValueError('--max-or value must not be negative'))
-    if (args.maf < 0) or (args.maf > 1): raise(ValueError('--maf value must be between 0 and 1'))
-    if args.info < 0: raise(ValueError('--info value must not be negative'))
+    if (args.max_or is not None) and (args.max_or <= 0): raise(ValueError('--max-or value must not be negative'))
+    if (args.maf is not None) and ((args.maf < 0) or (args.maf > 1)): raise(ValueError('--maf value must be between 0 and 1'))
+    if (args.info is not None) and (args.info < 0): raise(ValueError('--info value must not be negative'))
 
     if (args.max_or is not None) and (args.max_or < 1):
         log.log('--max-or was changed from {} to {}'.format(args.max_or, 1/args.max_or))
@@ -636,12 +640,24 @@ def make_qc(args, log):
         args.maf = None
 
     if (args.info is not None) and ('INFO' not in sumstats):
-        log.log('Warning: skip --maf ("INFO" column not found in {})'.format(args.sumstats))
+        log.log('Warning: skip --info ("INFO" column not found in {})'.format(args.sumstats))
         args.info = None
 
     if args.update_z_col_from_beta_and_se and (('BETA' not in sumstats) or ('SE' not in sumstats)):
-        log.log('Warning: can not apply update_z_col_from_beta_and_se ("OR" column not found in {})'.format(args.sumstats))
+        log.log('Warning: can not apply --update-z-col-from-beta-and-se ("OR" column not found in {})'.format(args.sumstats))
         args.update_z_col_from_beta_and_se = False
+
+    if args.qc_substudies and ('DIRECTION' not in sumstats):
+        log.log('Warning: can not apply --qc-substudies ("DIRECTION" column not found in {})'.format(args.sumstats))
+        args.qc_substudies = False
+
+    nstudies = None
+    if args.qc_substudies:
+        nstudies = np.min(sumstats['DIRECTION'].str.len())
+        max_nstudies = np.max(sumstats['DIRECTION'].str.len())
+        if max_nstudies != nstudies:
+            raise(ValueError('Problem with DIRECTION column: number of studies vary between {} and {}'.format(nstudies, max_nstudies)))
+        log.log('DIRECTION column indicates a meta-analysis of {} sub-studies. --qc-substudies will exclude variants with ? in {} or more substudies.'.format(nstudies, 1+int(nstudies/2)))
 
     if args.max_or is not None: args.fix_dtype_cols.append('OR')
     if args.maf is not None: args.fix_dtype_cols.append('FRQ')
@@ -704,6 +720,10 @@ def make_qc(args, log):
     if args.just_rs_variants:
         drop_sumstats(sumstats, log, '--just-rs-variants',
             drop_labels=sumstats.index[np.logical_not(sumstats['SNP'].str.match('^rs\d+$'))])
+
+    if nstudies is not None:
+        drop_sumstats(sumstats, log, '--qc-substudies',
+            drop_labels=sumstats.index[sumstats['DIRECTION'].str.count('\?') > int(nstudies/2)])
 
     sumstats.to_csv(args.out, index=False, header=True, sep='\t', na_rep='NA')
     log.log("{n} SNPs saved to {f}".format(n=len(sumstats), f=args.out))
