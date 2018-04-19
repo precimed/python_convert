@@ -112,6 +112,8 @@ def parse_args(args):
         help="similar to --snps-only, but variants with single-character allele codes outside of {'A', 'C', 'G', 'T' } are also excluded.")
     parser_qc.add_argument("--drop-strand-ambiguous-snps", action="store_true", default=False,
         help="excludes strand ambiguous SNPs (AT, CG).")
+    parser_qc.add_argument("--just-rs-variants", action="store_true", default=False,
+        help="keeps only variants with an RS number")
     parser_qc.set_defaults(func=make_qc)
 
     # 'mat' utility: load summary statistics into matlab format
@@ -617,6 +619,8 @@ def make_qc(args, log):
         raise(ValueError('BETA and SE columns are required for --update-z-col-from-beta-and-se'))
     if (args.just_acgt or args.snps_only or args.drop_strand_ambiguous_snps) and (('A1' not in sumstats) or ('A2' not in sumstats)):
         raise(ValueError('A1 and A2 columns are required for --just-acgt, --snps-only, --drop-strand-ambiguous-snps'))
+    if (args.just_rs_variants) and ('SNP' not in sumstats):
+        raise(ValueError('SNP column is required --just-rs-variants'))
 
     if len(args.dropna_cols) > 0:
         drop_sumstats(sumstats, log, "missing values in either of '{}' columns".format(args.dropna_cols), dropna_subset=args.dropna_cols)
@@ -654,6 +658,10 @@ def make_qc(args, log):
     if args.drop_strand_ambiguous_snps:
         drop_sumstats(sumstats, log, '--drop-strand-ambiguous-snps',
             drop_labels=sumstats.index[(sumstats['A1'].map(str) + sumstats['A2']).isin(['AT', 'TA', 'CG', 'GC']) & (sumstats['A1'].str.len() == 1)])
+
+    if args.just_rs_variants:
+        drop_sumstats(sumstats, log, '--just-rs-variants',
+            drop_labels=sumstats.index[np.logical_not(sumstats['SNP'].str.match('^rs\d+$'))])
 
     sumstats.to_csv(args.out, index=False, header=True, sep='\t', na_rep='NA')
     log.log("{n} SNPs saved to {f}".format(n=len(sumstats), f=args.out))
