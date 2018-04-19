@@ -601,7 +601,10 @@ def make_qc(args, log):
     check_input_file(args.sumstats)
     check_output_file(args.out, args.force)
 
-    exclude_ranges = make_ranges(args.exclude_ranges, log)
+    if args.max_or <= 0: raise(ValueError('--max-or value must not be negative'))
+    if (args.maf < 0) or (args.maf > 1): raise(ValueError('--maf value must be between 0 and 1'))
+    if args.info < 0: raise(ValueError('--info value must not be negative'))
+
     if (args.max_or is not None) and (args.max_or < 1):
         log.log('--max-or was changed from {} to {}'.format(args.max_or, 1/args.max_or))
         args.max_or = 1 / args.max_or
@@ -609,6 +612,7 @@ def make_qc(args, log):
     if args.dropna_cols is None: args.dropna_cols = []
     if args.fix_dtype_cols is None: args.fix_dtype_cols = []
 
+    exclude_ranges = make_ranges(args.exclude_ranges, log)
     if args.exclude_ranges is not None:
         args.dropna_cols.extend(['CHR', 'BP'])
         args.fix_dtype_cols.extend(['CHR', 'BP'])
@@ -676,7 +680,7 @@ def make_qc(args, log):
 
     if args.maf is not None:
         drop_sumstats(sumstats, log, 'MAF below threshold {}'.format(args.maf),
-            drop_labels=sumstats.index[sumstats.FRQ < args.maf])
+            drop_labels=sumstats.index[(sumstats.FRQ < args.maf) | (sumstats.FRQ>(1-args.maf))])
 
     if args.info is not None:
         drop_sumstats(sumstats, log, 'INFO below threshold {}'.format(args.info),
