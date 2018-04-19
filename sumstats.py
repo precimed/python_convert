@@ -102,6 +102,9 @@ def parse_args(args):
         help='List of column names. SNPs with missing values in either of the columns will be excluded.')
     parser_qc.add_argument("--fix-dtype-cols", type=str, nargs='+',
         help='List of column names. Ensure appropriate data type for the columns (CHR, BP - int, PVAL - float, etc)')
+    parser_qc.add_argument("--require-cols", type=str, nargs='+',
+        help='List of column names to require in the input. '
+        'Adding "EFFECT"" to the list will have a special meaning: at least one of BETA, OR, LOGODDS, Z columns must be present in the input.')
     parser_qc.add_argument("--maf", type=float, default=None,
         help='filters out all variants with minor allele frequency below the provided threshold'
         'This parameter is ignored when FRQ column is not present in the sumstats file. ')
@@ -615,6 +618,7 @@ def make_qc(args, log):
 
     if args.dropna_cols is None: args.dropna_cols = []
     if args.fix_dtype_cols is None: args.fix_dtype_cols = []
+    if args.require_cols is None: args.require_cols = []
 
     exclude_ranges = make_ranges(args.exclude_ranges, log)
     if args.exclude_ranges is not None:
@@ -629,6 +633,15 @@ def make_qc(args, log):
     log.log('Reading sumstats file {}...'.format(args.sumstats))
     sumstats = pd.read_table(args.sumstats, sep='\t', dtype=str)
     log.log("Sumstats file contains {d} markers.".format(d=len(sumstats)))
+
+    # Check all required columns
+    args.require_cols = [col.upper() for col in args.require_cols]
+    for col in args.require_cols:
+        if col == 'EFFECT':
+            if not any(col in sumstats for col in ['BETA', 'OR', 'LOGODDS', 'Z']):
+                raise(ValueError('--require-cols detected that none of effect direction columns (BETA, OR, LOGODDS, Z) is available the data'))
+        elif col not in sumstats:
+            raise(ValueError('--require-cols detected that {} column is not available the data'.format(col)))
 
     # Adjust optional parameters (those that can be ignored if certain columns are missing)
     if (args.max_or is not None) and ('OR' not in sumstats):
