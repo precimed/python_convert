@@ -105,6 +105,9 @@ def parse_args(args):
     parser_qc.add_argument("--maf", type=float, default=None,
         help='filters out all variants with minor allele frequency below the provided threshold'
         'This parameter is ignored when FRQ column is not present in the sumstats file. ')
+    parser_qc.add_argument("--info", type=float, default=None,
+        help='filters out all variants with imputation INFO score below the provided threshold'
+        'This parameter is ignored when INFO column is not present in the sumstats file. ')
     parser_qc.add_argument("--max-or", type=float, default=None,
         help='Filter SNPs with OR exceeding threshold. Also applies to OR smaller than the inverse value of the threshold, '
         'e.i. for --max-or 25 this QC procedure will exclude SNPs with OR above 25 and below 1/25. '
@@ -628,12 +631,17 @@ def make_qc(args, log):
         log.log('Warning: skip --maf ("FRQ" column not found in {})'.format(args.sumstats))
         args.maf = None
 
+    if (args.info is not None) and ('INFO' not in sumstats):
+        log.log('Warning: skip --maf ("INFO" column not found in {})'.format(args.sumstats))
+        args.info = None
+
     if args.update_z_col_from_beta_and_se and (('BETA' not in sumstats) or ('SE' not in sumstats)):
         log.log('Warning: can not apply update_z_col_from_beta_and_se ("OR" column not found in {})'.format(args.sumstats))
         args.update_z_col_from_beta_and_se = False
 
     if args.max_or is not None: args.fix_dtype_cols.append('OR')
     if args.maf is not None: args.fix_dtype_cols.append('FRQ')
+    if args.info is not None: args.fix_dtype_cols.append('INFO')
     if args.update_z_col_from_beta_and_se: args.fix_dtype_cols.extend(['BETA', 'SE'])
 
     # Validate that all required columns are present
@@ -669,6 +677,10 @@ def make_qc(args, log):
     if args.maf is not None:
         drop_sumstats(sumstats, log, 'MAF below threshold {}'.format(args.maf),
             drop_labels=sumstats.index[sumstats.FRQ < args.maf])
+
+    if args.info is not None:
+        drop_sumstats(sumstats, log, 'INFO below threshold {}'.format(args.info),
+            drop_labels=sumstats.index[sumstats.INFO < args.info])
 
     if args.update_z_col_from_beta_and_se:
         sumstats['Z'] = np.divide(sumstats.BETA.values, sumstats.SE.values)
