@@ -109,7 +109,9 @@ def parse_args(args):
     parser_qc.add_argument("--snps-only", action="store_true", default=False,
         help="excludes all variants with one or more multi-character allele codes. ")
     parser_qc.add_argument("--just-acgt", action="store_true",
-        help="similar to --snps-only, but variants with single-character allele codes outside of {'A', 'C', 'G', 'T', 'a', 'c', 'g', 't'} are also excluded.")
+        help="similar to --snps-only, but variants with single-character allele codes outside of {'A', 'C', 'G', 'T' } are also excluded.")
+    parser_qc.add_argument("--drop-strand-ambiguous-snps", action="store_true", default=False,
+        help="excludes strand ambiguous SNPs (AT, CG).")
     parser_qc.set_defaults(func=make_qc)
 
     # 'mat' utility: load summary statistics into matlab format
@@ -613,6 +615,8 @@ def make_qc(args, log):
 
     if args.update_z_col_from_beta_and_se and (('BETA' not in sumstats) or ('SE' not in sumstats)):
         raise(ValueError('BETA and SE columns are required for --update-z-col-from-beta-and-se'))
+    if (args.just_acgt or args.snps_only or args.drop_strand_ambiguous_snps) and (('A1' not in sumstats) or ('A2' not in sumstats)):
+        raise(ValueError('A1 and A2 columns are required for --just-acgt, --snps-only, --drop-strand-ambiguous-snps'))
 
     if len(args.dropna_cols) > 0:
         drop_sumstats(sumstats, log, "missing values in either of '{}' columns".format(args.dropna_cols), dropna_subset=args.dropna_cols)
@@ -640,12 +644,16 @@ def make_qc(args, log):
         sumstats['Z'] = np.divide(sumstats.BETA.values, sumstats.SE.values)
 
     if args.snps_only:
-        drop_sumstats(sumstats, log, '--snp-only',
+        drop_sumstats(sumstats, log, '--snps-only',
             drop_labels=sumstats.index[(sumstats['A1'].str.len() != 1) | (sumstats['A2'].str.len() != 1)])
 
     if args.just_acgt:
         drop_sumstats(sumstats, log, '--just-acgt',
             drop_labels=sumstats.index[np.logical_not(sumstats['A1'].isin(BASES)) | np.logical_not(sumstats['A2'].isin(BASES))])
+
+    if args.drop_strand_ambiguous_snps:
+        drop_sumstats(sumstats, log, '--drop-strand-ambiguous-snps',
+            drop_labels=sumstats.index[(sumstats['A1'].map(str) + sumstats['A2']).isin(['AT', 'TA', 'CG', 'GC']) & (sumstats['A1'].str.len() == 1)])
 
     sumstats.to_csv(args.out, index=False, header=True, sep='\t', na_rep='NA')
     log.log("{n} SNPs saved to {f}".format(n=len(sumstats), f=args.out))
