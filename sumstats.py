@@ -1227,10 +1227,10 @@ def make_clump(args, log):
     df_lead[cols].rename(columns={'CHR_A':'CHR'}).to_csv('{}.lead.csv'.format(args.out), sep='\t', index=False)
     log.log('{} lead SNPs reported to {}.lead.csv'.format(len(df_lead), args.out))
 
-    df_loci=df_lead.groupby(['locusnum']).agg({'MinBP':'min', 'MaxBP':'max', 'CHR_A':'min', 'PVAL':'min'})
+    df_loci=df_lead.groupby(['locusnum']).agg({'MinBP':'min', 'MaxBP':'max', 'CHR_A':'min', args.clump_field:'min'})
     df_loci.reset_index(inplace=True)
     df_loci=pd.merge(df_loci, df_lead[df_lead['is_locus_lead'].values][['locusnum', 'LEAD_SNP', 'LEAD_BP']], on='locusnum', how='left')
-    df_loci.rename(columns={'CHR_A':'CHR'})[['locusnum', 'CHR', 'LEAD_SNP', 'LEAD_BP', 'MinBP', 'MaxBP', 'PVAL']].to_csv('{}.loci.csv'.format(args.out), sep='\t', index=False)
+    df_loci.rename(columns={'CHR_A':'CHR'})[['locusnum', 'CHR', 'LEAD_SNP', 'LEAD_BP', 'MinBP', 'MaxBP', args.clump_field]].to_csv('{}.loci.csv'.format(args.out), sep='\t', index=False)
     log.log('{} loci reported to {}.loci.csv'.format(len(df_loci), args.out))
 
     df_cand = pd.merge(df_cand, df_lead[['LEAD_SNP', 'locusnum']], how='left', on='LEAD_SNP')
