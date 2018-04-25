@@ -4,6 +4,7 @@
 Various utilities for GWAS summary statistics.
 '''
 
+from __future__ import print_function
 import pandas as pd
 import numpy as np
 from scipy import stats
@@ -579,7 +580,7 @@ def make_csv(args, log):
             chunk = chunk.sort_index(axis=1)
             fix_columns_order(chunk).to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA')
             n_snps += len(chunk)
-            print("{f}: {n} lines processed".format(f=args.sumstats, n=(chunk_index+1)*args.chunksize))
+            eprint("{f}: {n} lines processed".format(f=args.sumstats, n=(chunk_index+1)*args.chunksize))
             if args.preview and (chunk_index+1) >= args.preview:
                 log.log('Abort reading input file due to --preview flag.')
                 break
@@ -802,7 +803,7 @@ def make_mat(args, log):
         df_result = pd.merge(df_ref, df_sumstats, how='left', on='SNP')
         num_matches = df_result[cols.PVAL].notnull().sum()
         if num_matches == 0: raise(ValueError("No SNPs match after joining with reference data"))
-        print("{f}: {n} SNPs matched with reference file".format(f=args.sumstats, n=num_matches))
+        eprint("{f}: {n} SNPs matched with reference file".format(f=args.sumstats, n=num_matches))
         sio.savemat(args.out, {'logpvec'+args.trait: -np.log10(df_result[cols.PVAL].values)}, format='5', do_compression=False, oned_as='column', appendmat=False)
         log.log("%s created" % args.out)
         return
@@ -936,7 +937,7 @@ def make_mat(args, log):
         else:
             df_out = df_out.append(chunk)
 
-        print("{f}: {n} lines processed, {m} SNPs matched with reference file".format(f=args.sumstats, n=(i+1)*args.chunksize, m=len(df_out)))
+        eprint("{f}: {n} lines processed, {m} SNPs matched with reference file".format(f=args.sumstats, n=(i+1)*args.chunksize, m=len(df_out)))
 
     if df_out.empty: raise(ValueError("No SNPs match after joining with reference data"))
     dup_index = df_out.index.duplicated(keep=False)
@@ -1050,7 +1051,7 @@ def make_lift(args, log):
         log.log('Lift CHR:POS for {} SNPs to another genomic build...'.format(len(indices_with_old_chrpos)))
         unique = 0; multi = 0; failed = 0
         for i, index in enumerate(indices_with_old_chrpos):
-            if (i+1) % 100 == 0: print('Finish {} SNPs'.format(i+1))
+            if (i+1) % 100 == 0: eprint('Finish {} SNPs'.format(i+1))
             chri = int(df.ix[index, cols.CHR]); bp = int(df.ix[index, cols.BP]); snp = df.ix[index, cols.SNP]
             lifted = lift_bp.convert_coordinate('chr{}'.format(chri), bp)
             if (lifted is None) or (len(lifted) == 0):
@@ -1295,7 +1296,7 @@ def make_rs(args, log):
             chunk = chunk.sort_index(axis=1)
             chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA')
             n_snps += len(chunk)
-            print("{f}: {n} lines processed".format(f=args.sumstats, n=(chunk_index+1)*args.chunksize))
+            eprint("{f}: {n} lines processed".format(f=args.sumstats, n=(chunk_index+1)*args.chunksize))
     log.log("{n} SNPs saved to {f}".format(n=n_snps, f=args.out))
 
 ### =================================================================================
@@ -1598,7 +1599,7 @@ def ldsum(args, log):
             l2['L2' + suffix] += csr.dot(np.ones((len(ref), 1))).reshape(len(ref))
             l4['L4' + suffix] += csr_sqr.dot(np.ones((len(ref), 1))).reshape(len(ref))
 
-        print("{f}: {n} lines finished, number of r2 in the last --l2 chunk: {r}{d}".format(f=args.ld, n=n_snps,r=', '.join([str(int(x)) for x in r2_per_bin]), d=incl_diag))
+        eprint("{f}: {n} lines finished, number of r2 in the last --l2 chunk: {r}{d}".format(f=args.ld, n=n_snps,r=', '.join([str(int(x)) for x in r2_per_bin]), d=incl_diag))
 
     log.log('Writting {}...'.format(args.out + ".l2.ldscore.gz"))
     l2.to_csv(args.out + ".l2.ldscore.gz", sep='\t', index=False, compression='gzip')
@@ -1737,6 +1738,9 @@ def sec_to_str(t):
     f += '{S}s'.format(S=s)
     return f
 
+def eprint(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
+
 class Logger(object):
     '''
     Lightweight logging.
@@ -1755,14 +1759,14 @@ class Logger(object):
         '''
         Print to log file and stdout with a single command.
         '''
-        print(msg)
+        eprint(msg)
         self.log_fh.write(str(msg).rstrip() + '\n')
 
     def error(self, msg):
         '''
         Print to log file, error file and stdout with a single command.
         '''
-        print(msg)
+        eprint(msg)
         self.log_fh.write(str(msg).rstrip() + '\n')
         with open(self.fh + '.error', 'w') as error_fh:
             error_fh.write(str(msg).rstrip() + '\n')
