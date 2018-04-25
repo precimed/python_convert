@@ -46,8 +46,12 @@ def parse_args(args):
         'Unrecognized columns are removed from the summary statistics file. '
         'The remaining utilities in sumstats.py work with summary statistics files in the standardized format.')
 
-    parser_csv.add_argument("--sumstats", type=str, help="[required] Raw input file with summary statistics.")
-    parser_csv.add_argument("--out", type=str, help="[required] File to output the result.")
+    parser_csv.add_argument("--sumstats", type=str,
+        help="[required] Raw input file with summary statistics. "
+        "Can be set to '-' to read from sys.stdin (input pipe).")
+    parser_csv.add_argument("--out", type=str,
+        help="[required] File to output the result. "
+        "Can be set to '-' to write to sys.stdout (output pipe).")
     parser_csv.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
 
     # Generate parameters from describe_cname.
@@ -96,8 +100,12 @@ def parse_args(args):
     parser_qc = subparsers.add_parser("qc",
         help="Miscellaneous quality control and filtering procedures")
 
-    parser_qc.add_argument("--sumstats", type=str, help="[required] Input file with summary statistics in standardized format")
-    parser_qc.add_argument("--out", type=str, help="[required] File to output the result.")
+    parser_qc.add_argument("--sumstats", type=str,
+        help="[required] Raw input file with summary statistics. "
+        "Can be set to '-' to read from sys.stdin (input pipe).")
+    parser_qc.add_argument("--out", type=str,
+        help="[required] File to output the result. "
+        "Can be set to '-' to write to sys.stdout (output pipe).")
     parser_qc.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
 
     parser_qc.add_argument("--exclude-ranges", type=str, nargs='+',
@@ -178,9 +186,13 @@ def parse_args(args):
         help="Lift RS numbers to a newer version of SNPdb, "
         "and/or liftover chr:pos to another genomic build using UCSC chain files. "
         "WARNING: this utility may use excessive amount of memory (up and beyong 32 GB of RAM).")
+    parser_lift.add_argument("--sumstats", type=str,
+        help="[required] Raw input file with summary statistics. "
+        "Can be set to '-' to read from sys.stdin (input pipe).")
+    parser_lift.add_argument("--out", type=str,
+        help="[required] File to output the result. "
+        "Can be set to '-' to write to sys.stdout (output pipe).")
 
-    parser_lift.add_argument("--sumstats", type=str, help="[required] Input file with summary statistics in standardized format")
-    parser_lift.add_argument("--out", type=str, help="[required] File to output the result.")
     parser_lift.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
 
     parser_lift.add_argument("--chain-file", default=None, type=str,
@@ -447,11 +459,19 @@ def find_auto_cnames(args, clean_file_cnames):
         args[cname.lower()] = clean_header(default_cname)
 
 def check_input_file(file):
-    if not os.path.isfile(file):
+    if file == '-':
+        raise ValueError("sys.stdin is not supported as input file")
+    if (file != sys.stdin) and not os.path.isfile(file):
         raise ValueError("Input file does not exist: {f}".format(f=file))
 
 def check_output_file(file, force=False):
     # Delete target file if user specifies --force option
+    if file == '-':
+        raise ValueError("sys.stdout is not supported as output file")
+
+    if file == sys.stdout:
+        return
+
     if force:
         try:
             os.remove(file)
@@ -470,6 +490,8 @@ def make_csv(args, log):
     """
     Based on file with summary statistics creates a tab-delimited csv file with standard columns.
     """
+    if args.sumstats == '-': args.sumstats = sys.stdin
+    if args.out == '-': args.out = sys.stdout
     check_input_file(args.sumstats)
     if args.all_snp_info_23_and_me: check_input_file(args.all_snp_info_23_and_me)
     set_clean_args_cnames(vars(args))
@@ -483,7 +505,7 @@ def make_csv(args, log):
     if args.keep_cols is None: args.keep_cols = []
 
     log.log('Reading summary statistics file {}...'.format(args.sumstats))
-    if args.head > 0:
+    if (args.head > 0) and (args.sumstats != sys.stdin):
         log.log('File header:')
         header = get_header(args.sumstats, lines=args.head)
         for line in header: log.log(line)
@@ -495,7 +517,7 @@ def make_csv(args, log):
     reader_23_and_me = pd.read_table(args.all_snp_info_23_and_me, dtype=str, sep=args.sep, chunksize=args.chunksize) if args.all_snp_info_23_and_me else None
     n_snps = 0
     max_n_val = np.nan; max_ncase_val = np.nan; max_ncontrol_val = np.nan
-    with open(args.out, 'a') as out_f:
+    with (open(args.out, 'a') if args.out != sys.stdout else sys.stdout) as out_f:
         for chunk_index, chunk in enumerate(reader):
             if reader_23_and_me:
                 chunk = pd.concat([chunk, next(reader_23_and_me)], axis=1)
@@ -589,7 +611,7 @@ def make_csv(args, log):
         log.log("Done. {n} SNPs saved to {f}".format(n=n_snps, f=args.out))
         log.log('Sample size: N={} NCASE={} NCONTROL={}'.format(max_n_val, max_ncase_val, max_ncontrol_val))
 
-    if not args.skip_validation:
+    if (not args.skip_validation) and (args.out != sys.stdout):
         log.log('Validate the resulting file...')
         reader = pd.read_table(args.out, sep='\t', chunksize=args.chunksize)
         n_snps = 0
@@ -621,6 +643,8 @@ def drop_sumstats(sumstats, log, reason, drop_labels=None, dropna_subset=None):
     log.log('Drop {} markers ({})'.format(sumstats_len - len(sumstats), reason))
 
 def make_qc(args, log):
+    if args.sumstats == '-': args.sumstats = sys.stdin
+    if args.out == '-': args.out = sys.stdout
     check_input_file(args.sumstats)
     check_output_file(args.out, args.force)
 
@@ -970,6 +994,8 @@ def make_lift(args, log):
     from pyliftover import LiftOver
     from lift_rs_numbers import LiftRsNumbers
 
+    if args.sumstats == '-': args.sumstats = sys.stdin
+    if args.out == '-': args.out = sys.stdout
     check_input_file(args.sumstats)
     check_output_file(args.out, args.force)
 
