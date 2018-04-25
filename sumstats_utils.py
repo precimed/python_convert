@@ -145,6 +145,7 @@ default_cnames = {
     'MAF': cols.FRQ,
     'FRQ_U': cols.FRQ,
     'F_U': cols.FRQ,
+    'FREQ': cols.FRQ,
     # DIRECTION
     'DIRECTION': cols.DIRECTION,
 }
