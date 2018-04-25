@@ -562,7 +562,7 @@ def make_csv(args, log):
             if cols.N in chunk: max_n_val = np.nanmax([max_n_val, chunk[cols.N].astype(float).max()])
 
             chunk = chunk.sort_index(axis=1)
-            chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA')
+            fix_columns_order(chunk).to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA')
             n_snps += len(chunk)
             print("{f}: {n} lines processed".format(f=args.sumstats, n=(chunk_index+1)*args.chunksize))
             if args.preview and (chunk_index+1) >= args.preview:
@@ -741,7 +741,7 @@ def make_qc(args, log):
         drop_sumstats(sumstats, log, '--qc-substudies',
             drop_labels=sumstats.index[sumstats['DIRECTION'].str.count('\?') > int(nstudies/2)])
 
-    sumstats.to_csv(args.out, index=False, header=True, sep='\t', na_rep='NA')
+    fix_columns_order(sumstats).to_csv(args.out, index=False, header=True, sep='\t', na_rep='NA')
     log.log("{n} SNPs saved to {f}".format(n=len(sumstats), f=args.out))
     describe_sample_size(sumstats, log)
 
@@ -1070,7 +1070,7 @@ def make_lift(args, log):
             df[cols.CHR] = df[cols.CHR].astype(int)
             df[cols.BP] = df[cols.BP].astype(int)
 
-    df.to_csv(args.out + ('.gz' if args.gzip else ''),
+    fix_columns_order(df).to_csv(args.out + ('.gz' if args.gzip else ''),
         index=False, header=True, sep='\t', na_rep=args.na_rep,
         compression='gzip' if args.gzip else None)
 
@@ -1793,6 +1793,12 @@ def make_ranges(args_exclude_ranges, log):
 
 def __isclose__(a, b, rel_tol=1e-09, abs_tol=0.0):
     return abs(a-b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
+
+def fix_columns_order(sumstats):
+    # Ensure that all standard columns go first (in the order define dby namedtuple 'Cols'), following by non-standard columns
+    cols_std   = [c for c in Cols._fields if c in sumstats.columns]
+    cols_other = [c for c in sumstats.columns if c not in Cols._fields]
+    return sumstats[cols_std + cols_other]
 
 ### =================================================================================
 ###                                Main section
