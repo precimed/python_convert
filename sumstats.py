@@ -1773,7 +1773,7 @@ class Logger(object):
     '''
     def __init__(self, fh):
         self.fh = fh
-        self.log_fh = open(fh + '.log', 'w')
+        self.log_fh = open(fh + '.log', 'w') if (fh != '-') else None
 
         # remove error file from previous run if it exists
         try:
@@ -1786,16 +1786,18 @@ class Logger(object):
         Print to log file and stdout with a single command.
         '''
         eprint(msg)
-        self.log_fh.write(str(msg).rstrip() + '\n')
+        if self.log_fh:
+            self.log_fh.write(str(msg).rstrip() + '\n')
 
     def error(self, msg):
         '''
         Print to log file, error file and stdout with a single command.
         '''
         eprint(msg)
-        self.log_fh.write(str(msg).rstrip() + '\n')
-        with open(self.fh + '.error', 'w') as error_fh:
-            error_fh.write(str(msg).rstrip() + '\n')
+        if self.log_fh:
+            self.log_fh.write(str(msg).rstrip() + '\n')
+            with open(self.fh + '.error', 'w') as error_fh:
+                error_fh.write(str(msg).rstrip() + '\n')
 
 def wait_for_system_memory(log):
     # safety guard to ensure that at least 25% of system memory is available
