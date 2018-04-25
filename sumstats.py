@@ -636,12 +636,15 @@ def make_qc(args, log):
 
     # Check all required columns
     args.require_cols = [col.upper() for col in args.require_cols]
+    missing_cols = []
     for col in args.require_cols:
         if col == 'EFFECT':
             if not any(col in sumstats for col in ['BETA', 'OR', 'LOGODDS', 'Z']):
-                raise(ValueError('--require-cols detected that none of effect direction columns (BETA, OR, LOGODDS, Z) is available the data'))
+                missing_cols.append('"EFFECT" (e.i. BETA, OR, LOGODDS or Z)')
         elif col not in sumstats:
-            raise(ValueError('--require-cols detected that {} column is not available the data'.format(col)))
+            missing_cols.append('"{}"'.format(col))
+    if missing_cols:
+        raise(ValueError('--require-cols detected that columns {} are not available in the sumstats file'.format(', '.join(missing_cols))))
 
     # Adjust optional parameters (those that can be ignored if certain columns are missing)
     if (args.max_or is not None) and ('OR' not in sumstats):
