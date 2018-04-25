@@ -85,6 +85,10 @@ def parse_args(args):
     parser_csv.add_argument("--header", default=None, type=str,
         help="Whitespace-delimited list of column names. "
         "This could be used for input files without column names.")
+    parser_csv.add_argument("--keep-cols", nargs='*', default=[],
+        help="List of non-standard column names from --sumstats file to keep in --out file. Columns names will UPPERCASEed.")
+    parser_csv.add_argument("--keep-all-cols", action="store_true", default=False,
+        help="Keep all non-standard column names from --sumstats file to keep in --out file. Columns names will UPPERCASEed.")
     parser_csv.set_defaults(func=make_csv)
 
     # 'qc' utility: miscellaneous quality control and filtering procedures
@@ -470,6 +474,13 @@ def make_csv(args, log):
     set_clean_args_cnames(vars(args))
     check_output_file(args.out, args.force)
 
+    if args.keep_all_cols and args.keep_cols:
+        err_msg = ("Misleading input arguments! Use either '--keep-cols' or "
+            "'--keep-all-cols' option, but not both at a time.")
+        raise(ValueError(err_msg))
+
+    if args.keep_cols is None: args.keep_cols = []
+
     log.log('Reading summary statistics file {}...'.format(args.sumstats))
     if args.head > 0:
         log.log('File header:')
@@ -510,7 +521,10 @@ def make_csv(args, log):
                     if (args.ncase_val is not None) and (cname==cols.NCASE): cname=None
                     if (args.ncontrol_val is not None) and (cname==cols.NCONTROL): cname=None
                     if (args.n_val is not None) and (cname==cols.N): cname=None
-                    log.log("\t{o} : {d} ({e})".format(o=original, d=cname, e="Will be deleted" if not cname else describe_cname[cname]))
+                    if cname: column_status = describe_cname[cname]
+                    elif args.keep_all_cols or (original.upper() in args.keep_cols): column_status = "Will be kept as unrecognized column"
+                    else: column_status = "Will be deleted"
+                    log.log("\t{o} : {d} ({e})".format(o=original, d=cname, e=column_status))
                 if not cname_map: raise(ValueError('Arguments imply to delete all columns from the input file. Did you forget --auto flag?'))
 
                 final_cols = set(cname_map.values())  # final list of columns in the resulting file
@@ -524,7 +538,8 @@ def make_csv(args, log):
                 if effect_size_column_count == 0: log.log('Warning: None of the columns indicate effect direction: typically either BETA, OR, LOGODDS or Z column is expected')
                 if effect_size_column_count > 1: log.log('Warning: Multiple columns indicate effect direction: typically only one of BETA, OR, LOGODDS and Z columns is expected')
 
-            chunk.drop([x for x in chunk.columns if x not in cname_map], axis=1, inplace=True)
+            if not args.keep_all_cols:
+                chunk.drop([x for x in chunk.columns if ((x not in cname_map) and (x not in args.keep_cols))], axis=1, inplace=True)
             chunk.rename(columns=cname_map, inplace=True)
 
             # Split CHR:POS column into two
