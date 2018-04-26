@@ -46,12 +46,12 @@ def parse_args(args):
         'Unrecognized columns are removed from the summary statistics file. '
         'The remaining utilities in sumstats.py work with summary statistics files in the standardized format.')
 
-    parser_csv.add_argument("--sumstats", type=str,
-        help="[required] Raw input file with summary statistics. "
-        "Can be set to '-' to read from sys.stdin (input pipe).")
-    parser_csv.add_argument("--out", type=str,
-        help="[required] File to output the result. "
-        "Can be set to '-' to write to sys.stdout (output pipe).")
+    parser_csv.add_argument("--sumstats", type=str, default='-',
+        help="Raw input file with summary statistics. "
+        "Default is '-', e.i. to read from sys.stdin (input pipe).")
+    parser_csv.add_argument("--out", type=str, default='-',
+        help="File to output the result. "
+        "Default is '-', e.i. to write to sys.stdout (output pipe).")
     parser_csv.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
 
     # Generate parameters from describe_cname.
@@ -100,12 +100,12 @@ def parse_args(args):
     parser_qc = subparsers.add_parser("qc",
         help="Miscellaneous quality control and filtering procedures")
 
-    parser_qc.add_argument("--sumstats", type=str,
-        help="[required] Raw input file with summary statistics. "
-        "Can be set to '-' to read from sys.stdin (input pipe).")
-    parser_qc.add_argument("--out", type=str,
+    parser_qc.add_argument("--sumstats", type=str, default='-',
+        help="Raw input file with summary statistics. "
+        "Default is '-', e.i. to read from sys.stdin (input pipe).")
+    parser_qc.add_argument("--out", type=str, default='-',
         help="[required] File to output the result. "
-        "Can be set to '-' to write to sys.stdout (output pipe).")
+        "Default is '-', e.i. to write to sys.stdout (output pipe).")
     parser_qc.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
 
     parser_qc.add_argument("--exclude-ranges", type=str, nargs='+',
@@ -186,12 +186,12 @@ def parse_args(args):
         help="Lift RS numbers to a newer version of SNPdb, "
         "and/or liftover chr:pos to another genomic build using UCSC chain files. "
         "WARNING: this utility may use excessive amount of memory (up and beyong 32 GB of RAM).")
-    parser_lift.add_argument("--sumstats", type=str,
-        help="[required] Raw input file with summary statistics. "
-        "Can be set to '-' to read from sys.stdin (input pipe).")
-    parser_lift.add_argument("--out", type=str,
-        help="[required] File to output the result. "
-        "Can be set to '-' to write to sys.stdout (output pipe).")
+    parser_lift.add_argument("--sumstats", type=str, default='-',
+        help="Raw input file with summary statistics. "
+        "Default is '-', e.i. to read from sys.stdin (input pipe).")
+    parser_lift.add_argument("--out", type=str, default='-',
+        help="File to output the result. "
+        "Default is '-', e.i. to write to sys.stdout (output pipe).")
 
     parser_lift.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
 
