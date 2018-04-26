@@ -890,7 +890,7 @@ def make_mat(args, log):
         chunksize=args.chunksize)
     ref_dict = {}
     for chunk in reader:
-        chunk.drop(chunk.index[np.logical_not(chunk['A1'].str.upper().isin(BASES)) | np.logical_not(chunk['A2'].str.upper().isin(BASES))], inplace=True)
+        chunk.drop(chunk.index[np.logical_not(chunk['A1'].str.upper().str.match('^[ACTG]*$')) | np.logical_not(chunk['A2'].str.upper().str.match('^[ACTG]*$'))], inplace=True)
         if chunk.empty: continue
         gtypes = zip(chunk[cols.A1].apply(str.upper),chunk[cols.A2].apply(str.upper))
         #TODO?: add check whether some id is already in ref_dict
