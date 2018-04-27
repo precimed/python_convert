@@ -746,7 +746,7 @@ def make_qc(args, log):
 
     for range in exclude_ranges:
         idx = sumstats.index[(sumstats[cols.CHR] == range.chr) & (sumstats[cols.BP] >= range.from_bp) & (sumstats[cols.BP] < range.to_bp)]
-        drop_sumstats(sumstats, log, 'exclude range {}:{}-{}'.format(idx.sum(), range.chr, range.from_bp, range.to_bp), drop_labels=idx)
+        drop_sumstats(sumstats, log, 'exclude range {}:{}-{}'.format(range.chr, range.from_bp, range.to_bp), drop_labels=idx)
 
     if args.max_or is not None:
         drop_sumstats(sumstats, log, 'OR exceeded threshold {}'.format(args.max_or),
