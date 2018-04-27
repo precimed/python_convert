@@ -177,6 +177,8 @@ def parse_args(args):
         help='A1 is the increasing allele.')
     parser_mat.add_argument("--ignore-alleles", action="store_true", default=False,
         help="Load summary stats file ignoring alleles (only 'logpvec' is created in this case, entire 'zvec' is set to nan).")
+    parser_mat.add_argument("--without-n", action="store_true", default=False,
+        help="Proceed without sample size (N or NCASE/NCONTROL)")
     parser_mat.add_argument("--chunksize", default=100000, type=int,
         help="Size of chunk to read the file.")
     parser_mat.set_defaults(func=make_mat)
@@ -870,7 +872,7 @@ def make_mat(args, log):
     n_col = cols.N if cols.N in columns else None
     ncase_col = cols.NCASE if cols.NCASE in columns else None
     ncontrol_col = cols.NCONTROL if cols.NCONTROL in columns else None
-    if (n_col is None) and ((ncase_col is None) or (ncontrol_col is None)):
+    if (not args.without_n) and ((n_col is None) and ((ncase_col is None) or (ncontrol_col is None))):
         raise(ValueError('Sample size column is not detected in {}. Expact either N or NCASE, NCONTROL column.'.format(args.sumstats)))
     missing_columns = [c for c in [cols.A1, cols.A2, cols.SNP, cols.PVAL, args.effect] if (c != None) and (c not in columns)]
     if missing_columns: raise(ValueError('{} columns are missing'.format(missing_columns)))
@@ -951,11 +953,12 @@ def make_mat(args, log):
         # add required columns
         chunk["logpvec"] = log10pv
         chunk["zvec"] = zvect
-        if n_col is None:
-            nvec = 4./(1./chunk[ncase_col] + 1./chunk[ncontrol_col])
-        else:
-            nvec = chunk[n_col].values
-        chunk["nvec"] = nvec
+        if not args.without_n:
+            if n_col is None:
+                nvec = 4./(1./chunk[ncase_col] + 1./chunk[ncontrol_col])
+            else:
+                nvec = chunk[n_col].values
+            chunk["nvec"] = nvec
         chunk.drop(cols2drop, axis=1, inplace=True)
 
         if df_out is None:
