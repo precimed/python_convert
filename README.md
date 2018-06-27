@@ -108,7 +108,7 @@ Further examples can be found in [GWAS_SUMSTAT/Makefile](https://github.com/prec
   - candidate SNPs
 using the same logic as FUMA's snp2gene. An example:
 
-``
+```
 python sumstats.py clump \
 	--clump-field FDR \
 	--force  \
@@ -118,7 +118,7 @@ python sumstats.py clump \
 	--exclude-ranges ['6:25119106-33854733', '8:7200000-12500000'] \
 	--clump-p1 0.01 \
 	--out cond0p01_BIP_vs_COG/result.clump
-``
+```
 
 Here the input file ``results.mat.csv`` was converted from cond/conj FDR results using this script:
 
