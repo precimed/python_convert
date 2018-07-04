@@ -259,6 +259,7 @@ def parse_args(args):
     parser_rs.add_argument("--ref", type=str, help="[required] Tab-separated file with list of referense SNPs.")
     parser_rs.add_argument("--out", type=str, help="[required] File to output the result.")
     parser_rs.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
+    parser_rs.add_argument("--a1a2", action="store_true", default=False, help="Add A1 and A2 columns from the reference file.")
 
     parser_rs.add_argument("--chunksize", default=100000, type=int,
         help="Size of chunk to read the file.")
@@ -1312,7 +1313,9 @@ def make_rs(args, log):
     check_output_file(args.out, force=args.force)
 
     log.log('Reading reference file {}...'.format(args.ref))
-    ref_file = pd.read_table(args.ref, sep='\t', usecols=[cols.SNP, cols.CHR, cols.BP])
+    usecols = [cols.SNP, cols.CHR, cols.BP]
+    if args.a1a2: usecols = usecols + ['A1', 'A2']
+    ref_file = pd.read_table(args.ref, sep='\t', usecols=usecols)
     log.log("Reference dict contains {d} snps.".format(d=len(ref_file)))
 
     log.log('Reading summary statistics file {}...'.format(args.sumstats))
@@ -1321,6 +1324,9 @@ def make_rs(args, log):
     with open(args.out, 'a') as out_f:
         for chunk_index, chunk in enumerate(reader):
             if cols.SNP in chunk: chunk.drop(cols.SNP, axis=1, inplace=True)
+            if args.a1a2:
+                if (cols.A1 in chunk): chunk.drop(cols.A1, axis=1, inplace=True)
+                if (cols.A2 in chunk): chunk.drop(cols.A2, axis=1, inplace=True)
             chunk.BP = chunk.BP.astype(int)
             chunk.CHR = chunk.CHR.astype(int)
             chunk = pd.merge(chunk, ref_file, how='left', on=[cols.CHR, cols.BP])
