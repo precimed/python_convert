@@ -853,7 +853,7 @@ def make_mat(args, log):
 
 
     # cols2ignore: columns from sumstats file which are dropped anyway
-    cols2ignore = ["SNP", "CHR", "BP", "A1", "A2"]
+    cols2ignore = ["SNP", "CHR", "BP", "A1", "A2", "DIRECTION"]
     if (set(cols2ignore) - set(columns)):
         # If this happens, probably standard format of csv file has changed.
         absent_cols = set(cols2ignore) - set(columns)
