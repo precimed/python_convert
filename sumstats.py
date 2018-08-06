@@ -604,6 +604,10 @@ def make_csv(args, log):
             if cols.NCONTROL in chunk: max_ncontrol_val = np.nanmax([max_ncontrol_val, chunk[cols.NCONTROL].astype(float).max()])
             if cols.N in chunk: max_n_val = np.nanmax([max_n_val, chunk[cols.N].astype(float).max()])
 
+            # Swap A1 and A2 for 23andMe, because in 23andMe summary stats effect size is about A2
+            if args.all_snp_info_23_and_me:
+                chunk.columns = [(cols.A1 if x==cols.A2 else cols.A2 if x==cols.A1 else x) for x in chunk.columns]
+
             chunk = chunk.sort_index(axis=1)
             fix_columns_order(chunk).to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA')
             n_snps += len(chunk)
