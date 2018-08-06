@@ -853,13 +853,14 @@ def make_mat(args, log):
 
 
     # cols2ignore: columns from sumstats file which are dropped anyway
-    cols2ignore = ["SNP", "CHR", "BP", "A1", "A2", "DIRECTION"]
+    cols2ignore = ["SNP", "CHR", "BP", "A1", "A2"]
     if (set(cols2ignore) - set(columns)):
         # If this happens, probably standard format of csv file has changed.
         absent_cols = set(cols2ignore) - set(columns)
         err_msg = ("Columns required in standard csv file: {} are missing in "
             "input csv file {}.").format(', '.join(absent_cols), args.sumstats)
         raise(RuntimeError(err_msg))
+    if "DIRECTION" in columns: cols2ignore.append("DIRECTION")
     # cols2keep: columns from sumstats file which are kept in mat file
     cols2keep = cols._fields if args.keep_all_cols else args.keep_cols
     # cols2keep: columns from sumstats file which are not saved to mat file
