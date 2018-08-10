@@ -949,7 +949,7 @@ def make_mat(args, log):
                 raise ValueError("OR column contains negative values")
             effect_sign = np.sign(chunk[args.effect].values - 1)
             effect_sign[effect_sign == 0] = 1
-        effect_sign *= not_ref_effect
+        effect_sign = effect_sign.astype(np.float64) * not_ref_effect
         zvect = stats.norm.ppf(chunk[cols.PVAL].values*0.5)*effect_sign
         ind_ambiguous = [j for j,gt in enumerate(gtypes) if gt == _reverse_complement_variant(gt)[::-1]]
         # set zscore of ambiguous SNPs to nan
