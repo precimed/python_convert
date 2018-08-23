@@ -41,6 +41,9 @@ def parse_args(args):
     parser.add_argument("--bold", nargs="+", default=["NA"],
         help=("A list of files with ids of SNPs to mark with bold dots, 'NA' if absent. "
             "These files should contain a single column with SNP ids without header"))
+    parser.add_argument("--annot", nargs="+", default=["NA"],
+        help=("A list of files with ids (1st column) and labels (2nd column) of SNPs to annotate, 'NA' if absent. "
+            "These files should contain a two columns (1st: SNP ids, 2nd: SNP labels) without header"))
     # the next two options are shortcuts for --outlined and --bold to work
     # directly with the output of "sumstats.py clump". These options probably
     # should be removed in future for clarity
@@ -87,6 +90,8 @@ def process_args(args):
         assert os.path.isfile(f) or f=="NA", "'%s' file doesn't exist" % f
     for f in args.indep:
         assert os.path.isfile(f) or f=="NA", "'%s' file doesn't exist" % f
+    for f in args.annot:
+        assert os.path.isfile(f) or f=="NA", "'%s' file doesn't exist" % f
 
     n = len(args.sumstats)
     arg_dict = vars(args)
@@ -131,8 +136,16 @@ def get_indep_sig(fname):
         df = pd.read_table(fname)
         return df["INDEP_SNP"].values
 
-def get_genes():
-    pass
+def get_annot(fname):
+    """
+    Read annotation file and return 2 arrays: SNP ids and SNP labels in the
+    corresponding order. Return two empty arrays if fname == "NA"
+    """
+    if fname == "NA":
+        return np.array([]), np.array([])
+    else:
+        df = pd.read_table(fname,header=None,names=["snp", "label"])
+        return df.snp.values, df.label.values
 
 
 def filter_sumstats(sumstats_f, sep, snpid_col, pval_col, chr_col, bp_col, chr2use):
@@ -165,7 +178,7 @@ def filter_sumstats(sumstats_f, sep, snpid_col, pval_col, chr_col, bp_col, chr2u
 
 
 def get_df2plot(df, outlined_snps_f, bold_snps_f, lead_snps_f, indep_snps_f,
-    downsample_frac, pval_col):
+    annot_f, downsample_frac, pval_col):
     """
     Select variants which will be plotted. Mark lead and independent significant
     variants if corresponding information is provided.
@@ -188,6 +201,7 @@ def get_df2plot(df, outlined_snps_f, bold_snps_f, lead_snps_f, indep_snps_f,
     bold_snp_ids = get_snp_ids(bold_snps_f)
     lead_snp_id = get_lead(lead_snps_f)
     indep_snp_id = get_indep_sig(indep_snps_f)
+    annot_snp_ids, annot_snp_labels = get_annot(annot_f)
     outlined_snp_ids = np.unique(np.concatenate((outlined_snp_ids, lead_snp_id)))
     bold_snp_ids = np.unique(np.concatenate((bold_snp_ids, indep_snp_id)))
     # sample variants 
@@ -201,14 +215,19 @@ def get_df2plot(df, outlined_snps_f, bold_snps_f, lead_snps_f, indep_snps_f,
     # are not in df.index, therefore we should take an index.intersection first.
     outlined_snp_ids = df.index.intersection(outlined_snp_ids)
     bold_snp_ids = df.index.intersection(bold_snp_ids)
-    snps2keep = np.unique(np.concatenate((outlined_snp_ids, bold_snp_ids, snp_sample)))
+    annot_snp_ids = df.index.intersection(annot_snp_ids)
+    snps2keep = np.unique(np.concatenate((outlined_snp_ids, bold_snp_ids,
+        snp_sample, annot_snp_ids)))
     df2plot = df.loc[snps2keep,:]
     df2plot.loc[:,"outlined"] = False
     df2plot.loc[outlined_snp_ids,"outlined"] = True
     df2plot.loc[:,"bold"] = False
     df2plot.loc[bold_snp_ids,"bold"] = True
+    df2plot.loc[:,"annot"] = ""
+    df2plot.loc[annot_snp_ids,"annot"] = annot_snp_labels
     print("%d outlined SNPs" % len(outlined_snp_ids))
-    print("%d bold significant SNPs" % len(bold_snp_ids))
+    print("%d bold SNPs" % len(bold_snp_ids))
+    print("%d annotated SNPs" % len(annot_snp_ids))
     print("%d SNPs will be plotted in total" % len(df2plot))
     return df2plot
 
@@ -298,7 +317,7 @@ if __name__ == "__main__":
         for i,s in enumerate(args.sumstats)]
 
     dfs2plot = [get_df2plot(df, args.outlined[i], args.bold[i], args.lead[i],
-                            args.indep[i], args.downsample_frac[i], args.p[i])
+                            args.indep[i], args.annot[i], args.downsample_frac[i], args.p[i])
         for i, df in enumerate(sumstat_dfs)]
 
     chr_df = get_chr_df(dfs2plot, args.bp, args.chr, args.between_chr_gap, args.chr2use)
@@ -332,6 +351,11 @@ if __name__ == "__main__":
         df_tmp = df.loc[df["outlined"],:]
         ax.plot(df_tmp["x_coord"], df_tmp["log10p"], ls=' ', marker='o', ms=5,
             markeredgewidth=0.6, markeredgecolor='k', color=color)
+        df_tmp = df.loc[df["annot"]!="",["annot","x_coord", "log10p"]]
+        for row in df_tmp.itertuples():
+            ax.annotate(row.annot, xy=(row.x_coord, row.log10p), xycoords='data',
+                xytext=(2,2), textcoords='offset points', color=color, style='italic') # fontsize=20
+
 
     ax.hlines([-np.log10(args.p_thresh)], 0, 1, colors='k', linestyles='dotted',
         transform=ax.get_yaxis_transform())
