@@ -149,9 +149,7 @@ def parse_args(args):
     parser_zscore = subparsers.add_parser("zscore",
         help="Calculate z-score from p-value column and effect size column")
 
-    parser_zscore.add_argument("--sumstats", type=str, default='-',
-        help="Raw input file with summary statistics. "
-        "Default is '-', e.i. to read from sys.stdin (input pipe).")
+    parser_zscore.add_argument("--sumstats", type=str, help="[REQUIRED] Raw input file with summary statistics. ")
     parser_zscore.add_argument("--out", type=str, default='-',
         help="[required] File to output the result. "
         "Default is '-', e.i. to write to sys.stdout (output pipe).")
@@ -826,7 +824,6 @@ def make_zscore(args, log):
     Creates corresponding mat files which can be used as an input for the conditional fdr model.
     Only SNPs from the reference file are considered. Zscores of strand ambiguous SNPs are set to NA.
     """
-    if args.sumstats == '-': args.sumstats = sys.stdin
     if args.out == '-': args.out = sys.stdout
     check_input_file(args.sumstats)
     check_output_file(args.out, args.force)
