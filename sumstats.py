@@ -412,6 +412,21 @@ def parse_args(args):
         "to help investigate where the differences came from.")
     parser_diffmat.set_defaults(func=diff_mat)
 
+    # 'neff' utility: generate N column from NCASE and NCONTROL
+    parser_neff = subparsers.add_parser("neff",
+        help="generate N column from NCASE and NCONTROL, as 4 / (1 / NCASE + 1 / NCONTROL)")
+    parser_neff.add_argument("--sumstats", type=str, default='-',
+        help="Raw input file with summary statistics. "
+        "Default is '-', e.i. to read from sys.stdin (input pipe).")
+    parser_neff.add_argument("--out", type=str, default='-',
+        help="[required] File to output the result. "
+        "Default is '-', e.i. to write to sys.stdout (output pipe).")
+    parser_neff.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
+    parser_neff.add_argument("--drop", action="store_true", default=False, help="Drop NCASE and NCONTROL columns.")
+    parser_neff.add_argument("--factor", default=4, type=float,
+        help="Factor in the numerator of the NEFF formula. Default to 4. Sometimes you may want FACTOR=2. Set FACTOR=0 if you want NEFF = NCASE + NCONTROL.")
+    parser_neff.set_defaults(func=make_neff)
+
     return parser.parse_args(args)
 
 ### =================================================================================
@@ -1821,6 +1836,28 @@ def diff_mat(args, log):
 
     ref.to_csv(args.out, sep='\t', index=False, na_rep='NA')
     log.log('Result is written into {}'.format(args.out))
+
+### =================================================================================
+###                          Implementation for parser_neff
+### ================================================================================= 
+def make_neff(args, log):
+    """
+    Generate N column from NCASE and NCONTROL
+    """
+    if args.sumstats == '-': args.sumstats = sys.stdin
+    if args.out == '-': args.out = sys.stdout
+    check_input_file(args.sumstats)
+    check_output_file(args.out, args.force)
+    
+    log.log('Reading summary statistics file {}...'.format(args.sumstats))
+    df = pd.read_table(args.sumstats, delim_whitespace=True)
+    if args.factor > 0:
+        df['N'] = np.divide(args.factor, 1./df['NCASE'] + 1./df['NCONTROL'])
+    else:
+        df['N'] = df['NCASE'] + df['NCONTROL']
+    if args.drop: df.drop(['NCASE', 'NCONTROL'], axis=1, inplace=True)
+    df.to_csv(args.out, sep='\t', index=False, na_rep='NA')
+    log.log("{n} SNPs saved to {f}".format(n=len(df), f=args.out))
 
 ### =================================================================================
 ###                                Misc stuff and helpers
