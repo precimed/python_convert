@@ -878,7 +878,7 @@ def make_zscore(args, log):
                     raise ValueError("OR column contains negative values")
                 effect_sign = np.sign(chunk[args.effect].values - 1)
                 effect_sign[effect_sign == 0] = 1
-            chunk[cols.Z] = -stats.norm.ppf(chunk[cols.PVAL].values*0.5)*effect_sign
+            chunk[cols.Z] = -stats.norm.ppf(chunk[cols.PVAL].values*0.5)*effect_sign.astype(np.float64)
             chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA')
             n_snps += len(chunk)
             eprint("{f}: {n} lines processed".format(f=args.sumstats, n=(chunk_index+1)*args.chunksize))
