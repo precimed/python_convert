@@ -24,7 +24,7 @@ usage: sumstats.py [-h]
 A collection of various utilities for GWAS summary statistics.
 
 positional arguments:
-  {csv,qc,mat,lift,clump,rs,ls,mat-to-csv,ldsc-to-mat,frq-to-mat,ref-to-mat,ldsum,diff-mat}
+  {csv,qc,zscore,mat,lift,clump,rs,ls,mat-to-csv,ldsc-to-mat,frq-to-mat,ref-to-mat,ldsum,diff-mat,neff}
     csv                 Load raw summary statistics file and convert it into a
                         standardized format: tab-separated file with standard
                         column names, standard chromosome labels, NA label for
@@ -35,6 +35,8 @@ positional arguments:
                         utilities in sumstats.py work with summary statistics
                         files in the standardized format.
     qc                  Miscellaneous quality control and filtering procedures
+    zscore              Calculate z-score from p-value column and effect size
+                        column
     mat                 Create mat files that can be used as an input for
                         cond/conj FDR and for CM3 model. Takes csv files
                         (created with the csv task of this script). Require
@@ -70,7 +72,8 @@ positional arguments:
                         each loci Step 7. Output candidate SNP report
     rs                  Augument summary statistic file with SNP RS number
                         from reference file. Merging is done on chromosome and
-                        position.
+                        position. If SNP column already exists in --sumstats
+                        file, it will be overwritten.
     ls                  Report information about standard sumstat files,
                         including the set of columns available, number of
                         SNPs, etc.
@@ -84,6 +87,8 @@ positional arguments:
                         scores
     diff-mat            Compare two .mat files with logpvec, zvec and nvec,
                         and report the differences.
+    neff                generate N column from NCASE and NCONTROL, as 4 / (1 /
+                        NCASE + 1 / NCONTROL)  
 
 optional arguments:
   -h, --help            show this help message and exit
