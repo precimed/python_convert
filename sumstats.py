@@ -145,6 +145,28 @@ def parse_args(args):
         help="keeps only variants with an RS number. Require SNP column in sumstats file. ")
     parser_qc.set_defaults(func=make_qc)
 
+    # 'zscore' utility: calculate z-score from p-value column and effect size column
+    parser_zscore = subparsers.add_parser("zscore",
+        help="Calculate z-score from p-value column and effect size column")
+
+    parser_zscore.add_argument("--sumstats", type=str, default='-',
+        help="Raw input file with summary statistics. "
+        "Default is '-', e.i. to read from sys.stdin (input pipe).")
+    parser_zscore.add_argument("--out", type=str, default='-',
+        help="[required] File to output the result. "
+        "Default is '-', e.i. to write to sys.stdout (output pipe).")
+    parser_zscore.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
+
+    parser_zscore.add_argument("--effect", default=None, type=str, choices=['BETA', 'OR', 'Z', 'LOGODDS'],
+        help="Effect column. Default is to auto-detect. In case if multiple effect columns are present in the input file"
+        " a warning will be shown and the first column is taken according to the priority list: "
+        "Z (highest priority), BETA, OR, LOGODDS (lowest priority).")
+    parser_zscore.add_argument("--a1-inc", action="store_true", default=False,
+        help='A1 is the increasing risk (effect) allele.')
+    parser_zscore.add_argument("--chunksize", default=100000, type=int,
+        help="Size of chunk to read the file.")
+    parser_zscore.set_defaults(func=make_zscore)
+
     # 'mat' utility: load summary statistics into matlab format
     parser_mat = subparsers.add_parser("mat", help="Create mat files that can "
         "be used as an input for cond/conj FDR and for CM3 model. "
@@ -169,12 +191,6 @@ def parse_args(args):
 
     parser_mat.add_argument("--trait", type=str, default='',
         help="Trait name that will be used in mat file. Can be kept empty, in this case the variables will be named 'logpvec', 'zvec' and 'nvec'")
-    parser_mat.add_argument("--effect", default=None, type=str, choices=['BETA', 'OR', 'Z', 'LOGODDS'],
-        help="Effect column. Default is to auto-detect. In case if multiple effect columns are present in the input file"
-        " a warning will be shown and the first column is taken according to the priority list: "
-        "Z (highest priority), BETA, OR, LOGODDS (lowest priority).")
-    parser_mat.add_argument("--a1-inc", action="store_true", default=False,
-        help='A1 is the increasing allele.')
     parser_mat.add_argument("--ignore-alleles", action="store_true", default=False,
         help="Load summary stats file ignoring alleles (only 'logpvec' is created in this case, entire 'zvec' is set to nan).")
     parser_mat.add_argument("--without-n", action="store_true", default=False,
@@ -795,11 +811,82 @@ def make_qc(args, log):
     describe_sample_size(sumstats, log)
 
 ### =================================================================================
-###                          Implementation for parser_mat
-### ================================================================================= 
+###                          Implementation for parser_zscore
+### =================================================================================
 def get_str_list_sign(str_list):
     return np.array([-1 if e[0]=='-' else 1 for e in list(str_list)], dtype=np.int)
+ 
+def make_zscore(args, log):
+    """
+    Calculate z-score from p-value column and effect size column
+    """
+    """
+    Takes csv files (created with the csv task of this script).
+    Require columns: SNP, P, and one of the signed summary statistics columns (BETA, OR, Z, LOGODDS).
+    Creates corresponding mat files which can be used as an input for the conditional fdr model.
+    Only SNPs from the reference file are considered. Zscores of strand ambiguous SNPs are set to NA.
+    """
+    if args.sumstats == '-': args.sumstats = sys.stdin
+    if args.out == '-': args.out = sys.stdout
+    check_input_file(args.sumstats)
+    check_output_file(args.out, args.force)
 
+    columns = list(pd.read_table(args.sumstats, sep='\t', nrows=0).columns)
+    log.log('Columns in {}: {}'.format(args.sumstats, columns))
+
+    if (args.effect is None) and (not args.a1_inc):
+        if cols.Z in columns: args.effect = cols.Z
+        elif cols.BETA in columns: args.effect = cols.BETA
+        elif cols.OR in columns: args.effect = cols.OR
+        elif cols.LOGODDS in columns: args.effect = cols.LOGODDS
+        else:
+            log.log('Warning: signed effect column is not detected in {}. Enable --a1-inc'.format(args.sumstats))
+            args.a1_inc=True
+        effect_size_column_count = np.sum([int(c in columns) for c in [cols.Z, cols.BETA, cols.OR, cols.LOGODDS]])
+        if effect_size_column_count > 1: log.log('Warning: Multiple columns indicate effect direction')
+        if effect_size_column_count == 1: log.log('Use {} column as effect direction.'.format(args.effect))
+
+    missing_columns = [c for c in [cols.PVAL, args.effect] if (c != None) and (c not in columns)]
+    if missing_columns: raise(ValueError('{} columns are missing'.format(missing_columns)))
+
+    if args.a1_inc:
+        signed_effect = None
+        effect_col_dtype_map = {}
+    else:
+        # if signed_effect is true, take effect column as string to handle correctly
+        # case of truncated numbers, e.g.: 0.00 and -0.00 should have different sign
+        signed_effect = False if args.effect == cols.OR else True
+        effect_col_dtype_map = {args.effect: (str if signed_effect else np.float)}
+
+    log.log('Reading summary statistics file {}...'.format(args.sumstats))
+    reader = pd.read_table(args.sumstats, sep='\t', chunksize=args.chunksize,
+        dtype=effect_col_dtype_map, float_precision='high')
+    n_snps = 0
+    with (open(args.out, 'a') if args.out != sys.stdout else sys.stdout) as out_f:
+        for chunk_index, chunk in enumerate(reader):
+            if chunk_index==0: log.log('Column types:\n\t' + '\n\t'.join([column + ':' + str(dtype) for (column, dtype) in zip(chunk.columns, chunk.dtypes)]))
+            if args.a1_inc:
+                effect_sign = np.ones(len(chunk))
+            elif signed_effect:
+                # effect column has str type
+                # -1 if effect starts with '-' else 1
+                effect_sign = get_str_list_sign(chunk[args.effect].astype(str))
+            else:
+                # effect column has np.float type
+                # 1 if effect >=1 else -1
+                if (chunk[args.effect] < 0).any():
+                    raise ValueError("OR column contains negative values")
+                effect_sign = np.sign(chunk[args.effect].values - 1)
+                effect_sign[effect_sign == 0] = 1
+            chunk[cols.Z] = -stats.norm.ppf(chunk[cols.PVAL].values*0.5)*effect_sign
+            chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA')
+            n_snps += len(chunk)
+            eprint("{f}: {n} lines processed".format(f=args.sumstats, n=(chunk_index+1)*args.chunksize))
+    log.log("{n} SNPs saved to {f}".format(n=n_snps, f=args.out))
+
+### =================================================================================
+###                          Implementation for parser_mat
+### ================================================================================= 
 _base_complement = {"A":"T", "C":"G", "G":"C", "T":"A"}
 def _complement(seq):
     return "".join([_base_complement[b] for b in seq])
@@ -826,7 +913,6 @@ def make_mat(args, log):
     # very special handling of cases where input file has no alleles information
     if args.ignore_alleles:
         log.log('Ignore A1/A2 alleles from the input files')
-        if args.effect is not None: raise(ValueError('--effect argument is incompatible with --ignore-alleles'))
         log.log('Reading reference file {}...'.format(args.ref))
         df_ref = pd.read_table(args.ref, sep='\t', usecols=[cols.SNP])
         log.log('Reading summary statistics file {}...'.format(args.sumstats))
@@ -851,9 +937,11 @@ def make_mat(args, log):
         log.log("Warning: '--keep-cols' contains names which are absent in csv "
             "file: %s. They will be ignored." % ', '.join(not_in_csv_keep_cols))
 
+    if cols.Z not in columns:
+        raise(RuntimeError('Z column is not present in the input file. Use ``sumstats.py zscore`` to enrich summary stats with z-score column.'))
 
     # cols2ignore: columns from sumstats file which are dropped anyway
-    cols2ignore = ["SNP", "CHR", "BP", "A1", "A2"]
+    cols2ignore = ["SNP", "CHR", "BP", "A1", "A2", "Z"]
     if (set(cols2ignore) - set(columns)):
         # If this happens, probably standard format of csv file has changed.
         absent_cols = set(cols2ignore) - set(columns)
@@ -866,33 +954,13 @@ def make_mat(args, log):
     # cols2keep: columns from sumstats file which are not saved to mat file
     cols2drop = (set(columns) - set(cols2keep)) | set(cols2ignore)
 
-    if (args.effect is None) and (not args.a1_inc):
-        if cols.Z in columns: args.effect = cols.Z
-        elif cols.BETA in columns: args.effect = cols.BETA
-        elif cols.OR in columns: args.effect = cols.OR
-        elif cols.LOGODDS in columns: args.effect = cols.LOGODDS
-        else:
-            log.log('Warning: signed effect column is not detected in {}. Enable --a1-inc'.format(args.sumstats))
-            args.a1_inc=True
-        effect_size_column_count = np.sum([int(c in columns) for c in [cols.Z, cols.BETA, cols.OR, cols.LOGODDS]])
-        if effect_size_column_count > 1: log.log('Warning: Multiple columns indicate effect direction')
-        if effect_size_column_count == 1: log.log('Use {} column as effect direction.'.format(args.effect))
     n_col = cols.N if cols.N in columns else None
     ncase_col = cols.NCASE if cols.NCASE in columns else None
     ncontrol_col = cols.NCONTROL if cols.NCONTROL in columns else None
     if (not args.without_n) and ((n_col is None) and ((ncase_col is None) or (ncontrol_col is None))):
         raise(ValueError('Sample size column is not detected in {}. Expact either N or NCASE, NCONTROL column.'.format(args.sumstats)))
-    missing_columns = [c for c in [cols.A1, cols.A2, cols.SNP, cols.PVAL, args.effect] if (c != None) and (c not in columns)]
+    missing_columns = [c for c in [cols.A1, cols.A2, cols.SNP, cols.PVAL] if (c != None) and (c not in columns)]
     if missing_columns: raise(ValueError('{} columns are missing'.format(missing_columns)))
-
-    if args.a1_inc:
-        signed_effect = None
-        effect_col_dtype_map = {}
-    else:
-        # if signed_effect is true, take effect column as string to handle correctly
-        # case of truncated numbers, e.g.: 0.00 and -0.00 should have different sign
-        signed_effect = False if args.effect == cols.OR else True
-        effect_col_dtype_map = {args.effect: (str if signed_effect else np.float)}
 
     log.log('Reading reference file {}...'.format(args.ref))
     usecols = [cols.SNP, cols.A1, cols.A2]
@@ -913,14 +981,13 @@ def make_mat(args, log):
     log.log("Reference dict contains {d} snps.".format(d=len(ref_dict)))
 
     log.log('Reading summary statistics file {}...'.format(args.sumstats))
-    reader = pd.read_table(args.sumstats, sep='\t', chunksize=args.chunksize,
-        dtype=effect_col_dtype_map, float_precision='high')
+    reader = pd.read_table(args.sumstats, sep='\t', chunksize=args.chunksize, float_precision='high')
     df_out = None
     for i, chunk in enumerate(reader):
         if i==0: log.log('Column types:\n\t' + '\n\t'.join([column + ':' + str(dtype) for (column, dtype) in zip(chunk.columns, chunk.dtypes)]))
         chunk = chunk.loc[chunk[cols.SNP].isin(ref_dict),:]
         if chunk.empty: continue
-        gtypes = zip(chunk[cols.A1].apply(str.upper),chunk[cols.A2].apply(str.upper))
+        gtypes = list(zip(chunk[cols.A1].apply(str.upper),chunk[cols.A2].apply(str.upper)))
         # index of SNPs that have the same alleles as indicated in reference
         ind = [gt in ref_dict[sid] for sid, gt in zip(chunk[cols.SNP], gtypes)]
         chunk = chunk.loc[ind,:]
@@ -933,24 +1000,10 @@ def make_mat(args, log):
         # negative effects will stay negative, since
         # stats.norm.ppf(chunk[cols.PVAL]*0.5) is always negetive (see zvect
         # calculation below).
-        not_ref_effect = np.array([-1 if gt in ref_dict[sid][:2] else 1
+        not_ref_effect = np.array([1 if gt in ref_dict[sid][:2] else -1
             for sid, gt in zip(chunk[cols.SNP], gtypes)])
         #TODO: check proportion of positive and negative effects
-        if args.a1_inc:
-            effect_sign = np.ones(len(chunk))
-        elif signed_effect:
-            # effect column has str type
-            # -1 if effect starts with '-' else 1
-            effect_sign = get_str_list_sign(chunk[args.effect].astype(str))
-        else:
-            # effect column has np.float type
-            # 1 if effect >=1 else -1
-            if (chunk[args.effect] < 0).any():
-                raise ValueError("OR column contains negative values")
-            effect_sign = np.sign(chunk[args.effect].values - 1)
-            effect_sign[effect_sign == 0] = 1
-        effect_sign *= not_ref_effect
-        zvect = stats.norm.ppf(chunk[cols.PVAL].values*0.5)*effect_sign
+        zvect = chunk[cols.Z].values*not_ref_effect
         ind_ambiguous = [j for j,gt in enumerate(gtypes) if gt == _reverse_complement_variant(gt)[::-1]]
         # set zscore of ambiguous SNPs to nan
         zvect[ind_ambiguous] = np.nan
