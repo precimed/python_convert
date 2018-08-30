@@ -176,7 +176,9 @@ def parse_args(args):
         "which auguments summary statistics with SNP column (first run 'sumstats.py rs ...', "
         "then feed the resulting file into sumstats.py mat ...)")
 
-    parser_mat.add_argument("--sumstats", type=str, help="[required] Input file with summary statistics in standardized format.")
+    parser_mat.add_argument("--sumstats", type=str, default='-',
+        help="Raw input file with summary statistics. "
+        "Default is '-', e.i. to read from sys.stdin (input pipe).")
     parser_mat.add_argument("--ref", type=str, help="[required] Tab-separated file with list of referense SNPs.")
     parser_mat.add_argument("--out", type=str, help="[required] File to output the result. File should end with .mat extension.")
     parser_mat.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
@@ -900,12 +902,10 @@ def make_mat(args, log):
     Creates corresponding mat files which can be used as an input for the conditional fdr model.
     Only SNPs from the reference file are considered. Zscores of strand ambiguous SNPs are set to NA.
     """
+    if args.sumstats == '-': args.sumstats = sys.stdin
     check_input_file(args.ref)
     check_input_file(args.sumstats)
     check_output_file(args.out, args.force)
-
-    columns = list(pd.read_table(args.sumstats, sep='\t', nrows=0).columns)
-    log.log('Columns in {}: {}'.format(args.sumstats, columns))
 
     # very special handling of cases where input file has no alleles information
     if args.ignore_alleles:
@@ -924,64 +924,71 @@ def make_mat(args, log):
         log.log("%s created" % args.out)
         return
 
-    # check whether arguments are correct
-    if args.keep_all_cols and args.keep_cols:
-        err_msg = ("Misleading input arguments! Use either '--keep-cols' or "
-            "'--keep-all-cols' option, but not both at a time.")
-        raise(ValueError(err_msg))
-    not_in_csv_keep_cols = set(args.keep_cols) - set(columns)
-    if not_in_csv_keep_cols:
-        log.log("Warning: '--keep-cols' contains names which are absent in csv "
-            "file: %s. They will be ignored." % ', '.join(not_in_csv_keep_cols))
-
-    if cols.Z not in columns:
-        raise(RuntimeError('Z column is not present in the input file. Use ``sumstats.py zscore`` to enrich summary stats with z-score column.'))
-
-    # cols2ignore: columns from sumstats file which are dropped anyway
-    cols2ignore = ["SNP", "CHR", "BP", "A1", "A2", "Z"]
-    if (set(cols2ignore) - set(columns)):
-        # If this happens, probably standard format of csv file has changed.
-        absent_cols = set(cols2ignore) - set(columns)
-        err_msg = ("Columns required in standard csv file: {} are missing in "
-            "input csv file {}.").format(', '.join(absent_cols), args.sumstats)
-        raise(RuntimeError(err_msg))
-    if "DIRECTION" in columns: cols2ignore.append("DIRECTION")
-    # cols2keep: columns from sumstats file which are kept in mat file
-    cols2keep = cols._fields if args.keep_all_cols else args.keep_cols
-    # cols2keep: columns from sumstats file which are not saved to mat file
-    cols2drop = (set(columns) - set(cols2keep)) | set(cols2ignore)
-
-    n_col = cols.N if cols.N in columns else None
-    ncase_col = cols.NCASE if cols.NCASE in columns else None
-    ncontrol_col = cols.NCONTROL if cols.NCONTROL in columns else None
-    if (not args.without_n) and ((n_col is None) and ((ncase_col is None) or (ncontrol_col is None))):
-        raise(ValueError('Sample size column is not detected in {}. Expact either N or NCASE, NCONTROL column.'.format(args.sumstats)))
-    missing_columns = [c for c in [cols.A1, cols.A2, cols.SNP, cols.PVAL] if (c != None) and (c not in columns)]
-    if missing_columns: raise(ValueError('{} columns are missing'.format(missing_columns)))
-
-    log.log('Reading reference file {}...'.format(args.ref))
-    usecols = [cols.SNP, cols.A1, cols.A2]
-    reader = pd.read_table(args.ref, sep='\t', usecols=usecols,
-        chunksize=args.chunksize)
-    ref_dict = {}
-    for chunk in reader:
-        chunk.drop(chunk.index[np.logical_not(chunk['A1'].str.upper().str.match('^[ACTG]*$')) | np.logical_not(chunk['A2'].str.upper().str.match('^[ACTG]*$'))], inplace=True)
-        if chunk.empty: continue
-        gtypes = zip(chunk[cols.A1].apply(str.upper),chunk[cols.A2].apply(str.upper))
-        #TODO?: add check whether some id is already in ref_dict
-        ref_dict.update(dict(zip(chunk[cols.SNP], gtypes)))
-    ref_dict = {i: (variant, _reverse_complement_variant(variant),
-                    variant[::-1], _reverse_complement_variant(variant[::-1]))
-                for i, variant in ref_dict.items()}
-    ref_snps = pd.read_table(args.ref, sep='\t', usecols=[cols.SNP], squeeze=True)
-    #TODO?: add check whether ref_snps contains duplicates
-    log.log("Reference dict contains {d} snps.".format(d=len(ref_dict)))
-
-    log.log('Reading summary statistics file {}...'.format(args.sumstats))
     reader = pd.read_table(args.sumstats, sep='\t', chunksize=args.chunksize, float_precision='high')
     df_out = None
-    for i, chunk in enumerate(reader):
-        if i==0: log.log('Column types:\n\t' + '\n\t'.join([column + ':' + str(dtype) for (column, dtype) in zip(chunk.columns, chunk.dtypes)]))
+    for chunk_index, chunk in enumerate(reader):
+        # (BEGIN) special handling of the first chunk
+        if chunk_index==0:
+            columns = list(chunk.columns)
+
+            # check whether arguments are correct
+            if args.keep_all_cols and args.keep_cols:
+                err_msg = ("Misleading input arguments! Use either '--keep-cols' or "
+                    "'--keep-all-cols' option, but not both at a time.")
+                raise(ValueError(err_msg))
+            not_in_csv_keep_cols = set(args.keep_cols) - set(columns)
+            if not_in_csv_keep_cols:
+                log.log("Warning: '--keep-cols' contains names which are absent in csv "
+                    "file: %s. They will be ignored." % ', '.join(not_in_csv_keep_cols))
+
+            if cols.Z not in columns:
+                raise(RuntimeError('Z column is not present in the input file. Use ``sumstats.py zscore`` to enrich summary stats with z-score column.'))
+
+            # cols2ignore: columns from sumstats file which are dropped anyway
+            cols2ignore = ["SNP", "CHR", "BP", "A1", "A2", "Z"]
+            if (set(cols2ignore) - set(columns)):
+                # If this happens, probably standard format of csv file has changed.
+                absent_cols = set(cols2ignore) - set(columns)
+                err_msg = ("Columns required in standard csv file: {} are missing in "
+                    "input csv file {}.").format(', '.join(absent_cols), args.sumstats)
+                raise(RuntimeError(err_msg))
+            if "DIRECTION" in columns: cols2ignore.append("DIRECTION")
+            # cols2keep: columns from sumstats file which are kept in mat file
+            cols2keep = cols._fields if args.keep_all_cols else args.keep_cols
+            # cols2keep: columns from sumstats file which are not saved to mat file
+            cols2drop = (set(columns) - set(cols2keep)) | set(cols2ignore)
+
+            n_col = cols.N if cols.N in columns else None
+            ncase_col = cols.NCASE if cols.NCASE in columns else None
+            ncontrol_col = cols.NCONTROL if cols.NCONTROL in columns else None
+            if (not args.without_n) and ((n_col is None) and ((ncase_col is None) or (ncontrol_col is None))):
+                raise(ValueError('Sample size column is not detected in {}. Expact either N or NCASE, NCONTROL column.'.format(args.sumstats)))
+            missing_columns = [c for c in [cols.A1, cols.A2, cols.SNP, cols.PVAL] if (c != None) and (c not in columns)]
+            if missing_columns: raise(ValueError('{} columns are missing'.format(missing_columns)))
+
+            log.log('Reading reference file {}...'.format(args.ref))
+            usecols = [cols.SNP, cols.A1, cols.A2]
+            ref_reader = pd.read_table(args.ref, sep='\t', usecols=usecols,
+                chunksize=args.chunksize)
+            ref_dict = {}
+            for ref_chunk in ref_reader:
+                ref_chunk.drop(chunk.index[np.logical_not(ref_chunk['A1'].str.upper().str.match('^[ACTG]*$')) | np.logical_not(ref_chunk['A2'].str.upper().str.match('^[ACTG]*$'))], inplace=True)
+                if ref_chunk.empty: continue
+                gtypes = zip(ref_chunk[cols.A1].apply(str.upper),ref_chunk[cols.A2].apply(str.upper))
+                #TODO?: add check whether some id is already in ref_dict
+                ref_dict.update(dict(zip(ref_chunk[cols.SNP], gtypes)))
+            ref_dict = {i: (variant, _reverse_complement_variant(variant),
+                            variant[::-1], _reverse_complement_variant(variant[::-1]))
+                        for i, variant in ref_dict.items()}
+            ref_snps = pd.read_table(args.ref, sep='\t', usecols=[cols.SNP], squeeze=True)
+            #TODO?: add check whether ref_snps contains duplicates
+            log.log("Reference dict contains {d} snps.".format(d=len(ref_dict)))
+
+            log.log('Reading summary statistics file {}...'.format(args.sumstats))
+            log.log('Column types:\n\t' + '\n\t'.join([column + ':' + str(dtype) for (column, dtype) in zip(chunk.columns, chunk.dtypes)]))
+
+        # (END) special handling of the first chunk
+
         chunk = chunk.loc[chunk[cols.SNP].isin(ref_dict),:]
         if chunk.empty: continue
         gtypes = list(zip(chunk[cols.A1].apply(str.upper),chunk[cols.A2].apply(str.upper)))
@@ -1024,7 +1031,7 @@ def make_mat(args, log):
         else:
             df_out = df_out.append(chunk)
 
-        eprint("{f}: {n} lines processed, {m} SNPs matched with reference file".format(f=args.sumstats, n=(i+1)*args.chunksize, m=len(df_out)))
+        eprint("{f}: {n} lines processed, {m} SNPs matched with reference file".format(f=args.sumstats, n=(chunk_index+1)*args.chunksize, m=len(df_out)))
 
     if df_out.empty: raise(ValueError("No SNPs match after joining with reference data"))
     dup_index = df_out.index.duplicated(keep=False)
