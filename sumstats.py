@@ -941,10 +941,10 @@ def make_mat(args, log):
 
     reader = pd.read_table(args.sumstats, sep='\t', chunksize=args.chunksize, float_precision='high')
     df_out = None
-    for chunk_index, chunk in enumerate(reader):
+    for chunk_index, ss_chunk in enumerate(reader):
         # (BEGIN) special handling of the first chunk
         if chunk_index==0:
-            columns = list(chunk.columns)
+            columns = list(ss_chunk.columns)
 
             # check whether arguments are correct
             if args.keep_all_cols and args.keep_cols:
@@ -987,7 +987,7 @@ def make_mat(args, log):
                 chunksize=args.chunksize)
             ref_dict = {}
             for ref_chunk in ref_reader:
-                ref_chunk.drop(chunk.index[np.logical_not(ref_chunk['A1'].str.upper().str.match('^[ACTG]*$')) | np.logical_not(ref_chunk['A2'].str.upper().str.match('^[ACTG]*$'))], inplace=True)
+                ref_chunk.drop(ref_chunk.index[np.logical_not(ref_chunk['A1'].str.upper().str.match('^[ACTG]*$')) | np.logical_not(ref_chunk['A2'].str.upper().str.match('^[ACTG]*$'))], inplace=True)
                 if ref_chunk.empty: continue
                 gtypes = zip(ref_chunk[cols.A1].apply(str.upper),ref_chunk[cols.A2].apply(str.upper))
                 #TODO?: add check whether some id is already in ref_dict
@@ -1000,51 +1000,51 @@ def make_mat(args, log):
             log.log("Reference dict contains {d} snps.".format(d=len(ref_dict)))
 
             log.log('Reading summary statistics file {}...'.format(args.sumstats))
-            log.log('Column types:\n\t' + '\n\t'.join([column + ':' + str(dtype) for (column, dtype) in zip(chunk.columns, chunk.dtypes)]))
+            log.log('Column types:\n\t' + '\n\t'.join([column + ':' + str(dtype) for (column, dtype) in zip(ss_chunk.columns, ss_chunk.dtypes)]))
 
         # (END) special handling of the first chunk
 
-        chunk = chunk.loc[chunk[cols.SNP].isin(ref_dict),:]
-        if chunk.empty: continue
-        gtypes = list(zip(chunk[cols.A1].apply(str.upper),chunk[cols.A2].apply(str.upper)))
+        ss_chunk = ss_chunk.loc[ss_chunk[cols.SNP].isin(ref_dict),:]
+        if ss_chunk.empty: continue
+        gtypes = list(zip(ss_chunk[cols.A1].apply(str.upper),ss_chunk[cols.A2].apply(str.upper)))
         # index of SNPs that have the same alleles as indicated in reference
-        ind = [gt in ref_dict[sid] for sid, gt in zip(chunk[cols.SNP], gtypes)]
-        chunk = chunk.loc[ind,:]
+        ind = [gt in ref_dict[sid] for sid, gt in zip(ss_chunk[cols.SNP], gtypes)]
+        ss_chunk = ss_chunk.loc[ind,:]
         gtypes = [gt for gt, j in zip(gtypes, ind) if j]
-        log10pv = -np.log10(chunk[cols.PVAL].values)
+        log10pv = -np.log10(ss_chunk[cols.PVAL].values)
         # not_ref_effect = [
         #   1 if effect allele in data == other allele in reference
         #   -1 if effect allele in data == effect allele in reference ]
         # So zscores with positive effects will be positive and zscores with
         # negative effects will stay negative, since
-        # stats.norm.ppf(chunk[cols.PVAL]*0.5) is always negetive (see zvect
+        # stats.norm.ppf(ss_chunk[cols.PVAL]*0.5) is always negetive (see zvect
         # calculation below).
         not_ref_effect = np.array([1 if gt in ref_dict[sid][:2] else -1
-            for sid, gt in zip(chunk[cols.SNP], gtypes)])
+            for sid, gt in zip(ss_chunk[cols.SNP], gtypes)])
         #TODO: check proportion of positive and negative effects
-        zvect = chunk[cols.Z].values*not_ref_effect
+        zvect = ss_chunk[cols.Z].values*not_ref_effect
         ind_ambiguous = [j for j,gt in enumerate(gtypes) if gt == _reverse_complement_variant(gt)[::-1]]
         # set zscore of ambiguous SNPs to nan
         zvect[ind_ambiguous] = np.nan
         #TODO: check whether output df contains duplicated rs-ids (warn)
 
         # reindex by SNP, add required columns and drop unnecessary columns
-        chunk.index = chunk[cols.SNP]
+        ss_chunk.index = ss_chunk[cols.SNP]
         # add required columns
-        chunk["logpvec"] = log10pv
-        chunk["zvec"] = zvect
+        ss_chunk["logpvec"] = log10pv
+        ss_chunk["zvec"] = zvect
         if not args.without_n:
             if n_col is None:
-                nvec = 4./(1./chunk[ncase_col] + 1./chunk[ncontrol_col])
+                nvec = 4./(1./ss_chunk[ncase_col] + 1./ss_chunk[ncontrol_col])
             else:
-                nvec = chunk[n_col].values
-            chunk["nvec"] = nvec
-        chunk.drop(cols2drop, axis=1, inplace=True)
+                nvec = ss_chunk[n_col].values
+            ss_chunk["nvec"] = nvec
+        ss_chunk.drop(cols2drop, axis=1, inplace=True)
 
         if df_out is None:
-            df_out = chunk.copy()
+            df_out = ss_chunk.copy()
         else:
-            df_out = df_out.append(chunk)
+            df_out = df_out.append(ss_chunk)
 
         eprint("{f}: {n} lines processed, {m} SNPs matched with reference file".format(f=args.sumstats, n=(chunk_index+1)*args.chunksize, m=len(df_out)))
 
@@ -1208,6 +1208,17 @@ def make_lift(args, log):
 ### =================================================================================
 ###                          Implementation for parser_clump
 ### =================================================================================
+def touch(fname, times=None):
+    with open(fname, 'a'):
+        os.utime(fname, times)
+
+def clump_cleanup(args, log):
+    temp_out = args.out + '.temp'
+    log.log('Saving intermediate files to {out}.temp.tar.gz'.format(out=args.out))
+    with tarfile.open('{out}.temp.tar.gz'.format(out=args.out), "w:gz") as tar:
+        tar.add(temp_out, arcname=os.path.basename(temp_out), exclude=lambda filename : os.path.basename(filename).startswith('sumstats'))
+    rmtree(temp_out)
+
 def make_clump(args, log):
     """
     Clump summary stats, produce lead SNP report, produce candidate SNP report
@@ -1294,7 +1305,11 @@ def make_clump(args, log):
     # find indep to lead SNP mapping (a data frame with columns 'LEAD' and 'INDEP')
     files = ["{}/lead.chr{}.clumped".format(temp_out, chri) for chri in args.chr_labels]
     files = [file for file in files if os.path.isfile(file)]
-    if not files: raise ValueError('No .clumped files found - could it be that no variants pass significance threshold?')
+    if not files: 
+        log.log('WARNING: No .clumped files found - could it be that no variants pass significance threshold?')
+        clump_cleanup(args, log)
+        return
+
     lead_to_indep = []
     for file in files:
         df=pd.read_table(file,delim_whitespace=True)
@@ -1374,10 +1389,7 @@ def make_clump(args, log):
     df_indep.to_csv('{}.indep.csv'.format(args.out), sep='\t', index=False)
     log.log('{} independent significant SNPs reported to {}.snps.csv'.format(len(df_indep), args.out))
 
-    log.log('Saving intermediate files to {out}.temp.tar.gz'.format(out=args.out))
-    with tarfile.open('{out}.temp.tar.gz'.format(out=args.out), "w:gz") as tar:
-        tar.add(temp_out, arcname=os.path.basename(temp_out), exclude=lambda filename : os.path.basename(filename).startswith('sumstats'))
-    rmtree(temp_out)
+    clump_cleanup(args, log)
 
 ### =================================================================================
 ###                          Implementation for parser_rs
