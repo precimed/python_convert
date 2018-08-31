@@ -1246,7 +1246,7 @@ def make_clump(args, log):
         log.log('Read {} SNPs from --sumstats file'.format(len(df_sumstats)))
         validate_columns(df_sumstats)
         for chri, df_chr_file in zip(args.chr_labels, args.sumstats_chr):
-            df_sumstats[df_sumstats[args.chr] == chri].to_csv(df_chr_file, sep='\t',index=False)
+            df_sumstats[df_sumstats[args.chr] == int(chri)].to_csv(df_chr_file, sep='\t',index=False)
     else:
         for df_chr_file in args.sumstats_chr:
             check_input_file(df_chr_file)
