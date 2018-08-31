@@ -123,14 +123,14 @@ def get_snp_ids(fname):
         return pd.read_table(fname,header=None,squeeze=True).values
 
 def get_lead(fname):
-    if fname == "NA":
+    if (fname == "NA") or (os.stat(fname).st_size == 0):
         return np.array([])
     else:
         df = pd.read_table(fname)
         return df.loc[df.is_locus_lead,"LEAD_SNP"].values
 
 def get_indep_sig(fname):
-    if fname == "NA":
+    if (fname == "NA") or (os.stat(fname).st_size == 0):
         return np.array([])
     else:
         df = pd.read_table(fname)
