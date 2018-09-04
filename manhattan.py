@@ -19,9 +19,17 @@ COLORS = {"orange":"#e69f00",
           "reddish_purple":"#cc79a7",
           "black":"#000000"}
 
+example_text =  """Example:
+python manhattan.py result.mat.csv \\
+--lead conj.result.clump.lead.csv --indep conj.result.clump.indep.csv \\
+--p FDR --y-label FDR --p-thresh 0.05 --out fdr_manhattan.png"""
+
+
 def parse_args(args):
     parser = argparse.ArgumentParser(
-        description="A tool to draw Manhattan plot from sumstat files.")
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="A tool to draw Manhattan plot from sumstat files.",
+        epilog=example_text)
 
     parser.add_argument("sumstats", nargs="+", help="A list of sumstat files")
     parser.add_argument("--sep", nargs="+", default=['\t'],
@@ -70,6 +78,9 @@ def parse_args(args):
         help="Draw grey background for every second chromosome")
     parser.add_argument("--seed", type=int, default=1, help="Random seed")
     parser.add_argument("--out", default="manhattan.png", help="Out file name")
+
+    parser.add_argument("--y-label", default="P",
+        help="Label of y axis. Label in the figure will be: -log10(y_label).")
 
     return parser.parse_args(args)
 
@@ -377,7 +388,7 @@ if __name__ == "__main__":
     ax.spines['bottom'].set_position(('outward',5))
 
     ax.set_xlabel("Chromosome")
-    ax.set_ylabel(r"$\mathrm{-log_{10}(conjFDR)}$")
+    ax.set_ylabel(r"$\mathrm{-log_{10}(%s)}$" % args.y_label)
 
     plt.tight_layout()
 
