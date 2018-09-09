@@ -1863,6 +1863,15 @@ def make_neff(args, log):
     
     log.log('Reading summary statistics file {}...'.format(args.sumstats))
     df = pd.read_table(args.sumstats, delim_whitespace=True)
+
+    if 'N' in df.columns:
+        if (('NCASE' not in df.columns) or ('NCONTROL' not in df.columns)):
+            log.log('WARNING: N column is alredy present, NCASE/NCONTROL columns are not available. Nothing to be done.')
+            df.to_csv(args.out, sep='\t', index=False, na_rep='NA')
+            log.log("{n} SNPs saved to {f}".format(n=len(df), f=args.out))
+            return
+        log.log('WARNING: N column is already present and will be overwritten.')
+
     if args.factor > 0:
         df['N'] = np.divide(args.factor, 1./df['NCASE'] + 1./df['NCONTROL'])
     else:
