@@ -75,6 +75,8 @@ def parse_args(args):
         help="Delimiter to use (',' ';' $' ' or $'\\t'). By default uses delim_whitespace option in pandas.read_table.")
     parser_csv.add_argument("--all-snp-info-23-and-me", default=None, type=str,
         help="all_snp_info file for summary stats in 23-and-me format")
+    parser_csv.add_argument("--qc-23-and-me", action="store_true", default=False,
+        help="QC 23andMe summary stats (exclude SNPs with 'N' in 'pass' column")
     parser_csv.add_argument("--n-val", default=None, type=float,
         help="Sample size. If this option is not set, will try to infer the sample "
         "size from the input file. If the input file contains a sample size "
@@ -558,6 +560,8 @@ def make_csv(args, log):
             if reader_23_and_me:
                 chunk = pd.concat([chunk, next(reader_23_and_me)], axis=1)
                 chunk = chunk.loc[:, ~chunk.columns.duplicated()]
+                if args.qc_23_and_me:
+                    chunk = chunk[chunk['pass'] != 'N'].copy()
 
             original_file_cname = chunk.columns
             set_clean_file_cnames(chunk)
