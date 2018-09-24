@@ -812,7 +812,7 @@ def make_qc(args, log):
 
     if args.min_pval is not None:
         drop_sumstats(sumstats, log, 'PVAL below threshold {} or above 1.0'.format(args.min_pval),
-            drop_labels=sumstats.index[(sumstats.PVAL < args.min_pval) | (sumstats.PVAL > 1.0))])
+            drop_labels=sumstats.index[(sumstats.PVAL < args.min_pval) or (sumstats.PVAL > 1.0)])
 
     if args.update_z_col_from_beta_and_se:
         sumstats['Z'] = np.divide(sumstats.BETA.values, sumstats.SE.values)
