@@ -133,6 +133,8 @@ def parse_args(args):
         'e.i. for --max-or 25 this QC procedure will exclude SNPs with OR above 25 and below 1/25. '
         '--max-or values below 1 are also acceptable (they will be inverted). '
         'This parameter is ignored when OR column is not present in the sumstats file. ')
+    parser_qc.add_argument("--min-pval", type=float, default=None,
+        help='Filter SNPs with p-value below given threshold (for example, to exclude genome-wide significant SNPs from analysis')
     parser_qc.add_argument("--update-z-col-from-beta-and-se",  action="store_true", default=False,
         help='Create or update Z score column from BETA and SE columns. This parameter is ignored when BETA or SE columns are not present in the sumstats file. ')
     parser_qc.add_argument("--snps-only", action="store_true", default=False,
@@ -691,6 +693,7 @@ def make_qc(args, log):
     if (args.max_or is not None) and (args.max_or <= 0): raise(ValueError('--max-or value must not be negative'))
     if (args.maf is not None) and ((args.maf < 0) or (args.maf > 1)): raise(ValueError('--maf value must be between 0 and 1'))
     if (args.info is not None) and (args.info < 0): raise(ValueError('--info value must not be negative'))
+    if (args.min_pval is not None) and ((args.min_pval < 0) or (args.min_pval > 1)): raise(ValueError('--min-pval value be between 0 and 1'))
 
     if (args.max_or is not None) and (args.max_or < 1):
         log.log('--max-or was changed from {} to {}'.format(args.max_or, 1/args.max_or))
@@ -739,6 +742,10 @@ def make_qc(args, log):
         log.log('Warning: skip --info ("INFO" column not found in {})'.format(args.sumstats))
         args.info = None
 
+    if (args.min_pval is not None) and ('PVAL' not in sumstats):
+        log.log('Warning: skip --min-pval ("PVAL" column not found in {})'.format(args.sumstats))
+        args.min_pval = None
+
     if args.update_z_col_from_beta_and_se and (('BETA' not in sumstats) or ('SE' not in sumstats)):
         log.log('Warning: can not apply --update-z-col-from-beta-and-se ("OR" column not found in {})'.format(args.sumstats))
         args.update_z_col_from_beta_and_se = False
@@ -759,6 +766,7 @@ def make_qc(args, log):
     if args.maf is not None: args.fix_dtype_cols.append('FRQ')
     if args.info is not None: args.fix_dtype_cols.append('INFO')
     if args.update_z_col_from_beta_and_se: args.fix_dtype_cols.extend(['BETA', 'SE'])
+    if args.min_pval is not None: args.fix_dtype_cols.append('PVAL')
 
     # Validate that all required columns are present
     if (args.just_acgt or args.snps_only or args.drop_strand_ambiguous_snps) and (('A1' not in sumstats) or ('A2' not in sumstats)):
@@ -797,6 +805,10 @@ def make_qc(args, log):
     if args.info is not None:
         drop_sumstats(sumstats, log, 'INFO below threshold {}'.format(args.info),
             drop_labels=sumstats.index[sumstats.INFO < args.info])
+
+    if args.min_pval is not None:
+        drop_sumstats(sumstats, log, 'PVAL below threshold {} or above 1.0'.format(args.min_pval),
+            drop_labels=sumstats.index[(sumstats.PVAL < args.min_pval) | (sumstats.PVAL > 1.0))])
 
     if args.update_z_col_from_beta_and_se:
         sumstats['Z'] = np.divide(sumstats.BETA.values, sumstats.SE.values)
