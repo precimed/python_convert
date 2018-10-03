@@ -8,16 +8,19 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Rectangle
+import matplotlib.patheffects as mpe
 
 # colors from http://mkweb.bcgsc.ca/colorblind/
-COLORS = {"orange":"#e69f00",
-          "sky_blue":"#56b4e9",
-          "bluish_green":"#009e73",
-          "yellow":"#f0e442",
-          "blue":"#0072b2",
-          "vermillion":"#d55e00",
-          "reddish_purple":"#cc79a7",
-          "black":"#000000"}
+CB_COLOR_NAMES = ["orange","sky_blue","bluish_green","yellow","blue",
+    "vermillion","reddish_purple","black"]
+CB_COLORS = {"orange":"#e69f00",
+             "sky_blue":"#56b4e9",
+             "bluish_green":"#009e73",
+             "yellow":"#f0e442",
+             "blue":"#0072b2",
+             "vermillion":"#d55e00",
+             "reddish_purple":"#cc79a7",
+             "black":"#000000"}
 
 example_text =  """Example:
 python manhattan.py result.mat.csv \\
@@ -51,7 +54,7 @@ def parse_args(args):
             "These files should contain a single column with SNP ids without header"))
     parser.add_argument("--annot", nargs="+", default=["NA"],
         help=("A list of files with ids (1st column) and labels (2nd column) of SNPs to annotate, 'NA' if absent. "
-            "These files should contain a two columns (1st: SNP ids, 2nd: SNP labels) without header"))
+            "These files should contain two columns (1st: SNP ids, 2nd: SNP labels) without header"))
     # the next two options are shortcuts for --outlined and --bold to work
     # directly with the output of "sumstats.py clump". These options probably
     # should be removed in future for clarity
@@ -76,6 +79,8 @@ def parse_args(args):
             "Chromosomes with non-integer ids should be indicated separately"))
     parser.add_argument("--striped-background", action="store_true",
         help="Draw grey background for every second chromosome")
+    parser.add_argument("--cb-colors", action="store_true",
+        help="Use colors designed for color-blind people")
     parser.add_argument("--seed", type=int, default=1, help="Random seed")
     parser.add_argument("--out", default="manhattan.png", help="Out file name")
 
@@ -178,6 +183,7 @@ def filter_sumstats(sumstats_f, sep, snpid_col, pval_col, chr_col, bp_col, chr2u
     df = pd.read_table(sumstats_f, usecols=cols2use, index_col=snpid_col, sep=sep,
         dtype={chr_col:str})
     print("%d SNPs in %s" % (len(df), sumstats_f))
+    # TODO: replace dropna with df = df.loc[df[pval_col]>0,:], should be ~ 1.5x faster
     df.dropna(subset=[pval_col], how="all", inplace = True)
     print("%d SNPs with defined p-value" % len(df))
     df = df.loc[df[chr_col].isin(chr2use),:]
@@ -185,6 +191,7 @@ def filter_sumstats(sumstats_f, sep, snpid_col, pval_col, chr_col, bp_col, chr2u
     # TODO: zero filtering step is very slow, should be optimized
     df = df.loc[df[pval_col]>0,:]
     print("%d SNPs with non-zero p-value" % len(df))
+    # TODO: drop duplicates as it is done in qq.py
     return df
 
 
@@ -350,22 +357,24 @@ if __name__ == "__main__":
 
     for i, df in enumerate(dfs2plot):
         # plot normal points
-        color = "C%d" % i
-        ax.plot(df["x_coord"], df["log10p"], ls=' ', marker='.', ms=1,
+        color = CB_COLORS[CB_COLOR_NAMES[i]] if args.cb_colors else "C%d" % i
+        ax.plot(df["x_coord"], df["log10p"], ls=' ', marker='.', ms=3,
             color=color, alpha=args.transparency[i])
     for i, df in enumerate(dfs2plot):
         # plot bold significant and outlined variants "on top" of normal points
-        color = "C%d" % i
+        color = CB_COLORS[CB_COLOR_NAMES[i]] if args.cb_colors else "C%d" % i
         df_tmp = df.loc[df["bold"],:]
-        ax.plot(df_tmp["x_coord"], df_tmp["log10p"], ls=' ', marker='o', ms=4,
-            color=color)
+        ax.plot(df_tmp["x_coord"], df_tmp["log10p"], ls=' ', marker='o', ms=6,
+            color=color, alpha=args.transparency[i])
         df_tmp = df.loc[df["outlined"],:]
-        ax.plot(df_tmp["x_coord"], df_tmp["log10p"], ls=' ', marker='o', ms=5,
+        ax.plot(df_tmp["x_coord"], df_tmp["log10p"], ls=' ', marker='o', ms=8,
             markeredgewidth=0.6, markeredgecolor='k', color=color)
         df_tmp = df.loc[df["annot"]!="",["annot","x_coord", "log10p"]]
+        pe = [mpe.Stroke(linewidth=0.8, foreground='black')]
         for row in df_tmp.itertuples():
             ax.annotate(row.annot, xy=(row.x_coord, row.log10p), xycoords='data',
-                xytext=(2,2), textcoords='offset points', color=color, style='italic') # fontsize=20
+                xytext=(2,2), textcoords='offset points', color=color, fontsize=14,
+                style='italic', fontweight='heavy', path_effects=pe)
 
 
     ax.hlines([-np.log10(args.p_thresh)], 0, 1, colors='k', linestyles='dotted',
