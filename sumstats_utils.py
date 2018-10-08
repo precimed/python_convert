@@ -78,6 +78,7 @@ default_cnames = {
     # POSITION
     'POS': cols.BP,
     'BP': cols.BP,
+    'BPOS': cols.BP,
     'POSITION' : cols.BP,
     # NUMBER OF STUDIES
     'NSTUDY': cols.NSTUDY,
@@ -91,6 +92,7 @@ default_cnames = {
     'PVAL': cols.PVAL,
     'P_VAL': cols.PVAL,
     'GC_PVALUE': cols.PVAL,
+    'MTAG_PVAL': cols.PVAL,
     # ALLELE 1
     'A1': cols.A1,
     'ALLELE1': cols.A1,
@@ -127,9 +129,11 @@ default_cnames = {
     'Z-SCORE': cols.Z,
     'GC_ZSCORE': cols.Z,
     'Z': cols.Z,
+    'MTAG_Z': cols.Z,
     'OR': cols.OR,
     'B': cols.BETA,
     'BETA': cols.BETA,
+    'MTAG_BETA': cols.BETA,
     'LOG_ODDS': cols.LOGODDS,
     'EFFECTS': cols.BETA,
     'EFFECT': cols.BETA,
@@ -137,6 +141,7 @@ default_cnames = {
     # STANDARD ERROR
     'SE' : cols.SE,
     'STDERR' : cols.SE,
+    'MTAG_SE' : cols.SE,
     # INFO
     'INFO': cols.INFO,
     # MAF
