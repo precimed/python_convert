@@ -54,7 +54,7 @@ def parse_args(args):
             "These files should contain a single column with SNP ids without header"))
     parser.add_argument("--annot", nargs="+", default=["NA"],
         help=("A list of files with ids (1st column) and labels (2nd column) of SNPs to annotate, 'NA' if absent. "
-            "These files should contain two columns (1st: SNP ids, 2nd: SNP labels) without header"))
+            "These files should contain two tab-delimited columns (1st: SNP ids, 2nd: SNP labels) without header"))
     # the next two options are shortcuts for --outlined and --bold to work
     # directly with the output of "sumstats.py clump". These options probably
     # should be removed in future for clarity
@@ -379,8 +379,6 @@ if __name__ == "__main__":
 
     ax.hlines([-np.log10(args.p_thresh)], 0, 1, colors='k', linestyles='dotted',
         transform=ax.get_yaxis_transform())
-
-    # TODO: annotate outlined (or any specified SNPs) SNPs
 
     x_ticks = chr_df["start"] + 0.5*chr_df["rel_size"]
     ax.set_xticks(x_ticks)
