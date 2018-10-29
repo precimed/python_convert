@@ -10,8 +10,20 @@ from matplotlib.collections import PatchCollection
 from matplotlib.patches import Rectangle
 import matplotlib.patheffects as mpe
 
+# Default colors are similar to matplotlib 2.0 defaults and are taken from:
+# https://github.com/vega/vega/wiki/Scales#scale-range-literals
+DEFAULT_COLOR_NAMES = [1,3,5,7,9,11,13,15,17,19]
+DEFAULT_COLOR_NAMES_ANNOT = [2,4,6,8,10,12,14,16,18,20]
+DEFAULT_COLORS = {1:"#1f77b4", 2:"#aec7e8", 3:"#ff7f0e", 4:"#ffbb78",
+                  5:"#2ca02c", 6:"#98df8a", 7:"#d62728", 8:"#ff9896",
+                  9:"#9467bd", 10:"#c5b0d5", 11:"#8c564b", 12:"#c49c94",
+                  13:"#e377c2", 14:"#f7b6d2", 15:"#7f7f7f", 16:"#c7c7c7",
+                  17:"#bcbd22", 18:"#dbdb8d", 19:"#17becf", 20:"#9edae5"}
+
 # colors from http://mkweb.bcgsc.ca/colorblind/
 CB_COLOR_NAMES = ["orange","sky_blue","bluish_green","yellow","blue",
+    "vermillion","reddish_purple","black"]
+CB_COLOR_NAMES_ANNOT = ["orange","sky_blue","bluish_green","yellow","blue",
     "vermillion","reddish_purple","black"]
 CB_COLORS = {"orange":"#e69f00",
              "sky_blue":"#56b4e9",
@@ -71,6 +83,10 @@ def parse_args(args):
         help="Transparency level of points")
     parser.add_argument("--between-chr-gap", type=float, default=0.1,
         help="Size of the gap between chromosomes in the figure")
+    parser.add_argument("--snps-to-keep", nargs="+", default=["NA"],
+        help="A list of files with ids of SNPs to take for plotting, 'NA' if absent. "
+        "These sets of SNPs are further reduced according to '--downsample-frac' argument. "
+        "These files should contain a single column with SNP ids without header")
     parser.add_argument("--downsample-frac", nargs="+", type=float,
         default=[0.005], help="Fraction of SNPs to take for plotting")
     parser.add_argument("--chr2use", type=str, default="1-22",
@@ -130,6 +146,7 @@ def process_args(args):
     assert len(args.chr) == n, "--chr" + msg
     assert len(args.bp) == n, "--bp" + msg
     assert len(args.p) == n, "--p " + msg
+    assert len(args.snps_to_keep) == n, "--snps-to-keep" + msg
     assert len(args.downsample_frac) == n, "--downsample-frac" + msg
 
 def get_snp_ids(fname):
@@ -154,14 +171,15 @@ def get_indep_sig(fname):
 
 def get_annot(fname):
     """
-    Read annotation file and return 2 arrays: SNP ids and SNP labels in the
-    corresponding order. Return two empty arrays if fname == "NA"
+    Read annotation file and return Series: index=SNP ids and values=SNP labels.
+    Return empty Series if fname == "NA"
     """
     if fname == "NA":
-        return np.array([]), np.array([])
+        return pd.Series([])
     else:
-        df = pd.read_table(fname,header=None,names=["snp", "label"])
-        return df.snp.values, df.label.values
+        series = pd.read_table(fname,header=None,names=["snp", "label"],
+            index_col="snp",squeeze=True)
+        return series
 
 
 def filter_sumstats(sumstats_f, sep, snpid_col, pval_col, chr_col, bp_col, chr2use):
@@ -196,7 +214,7 @@ def filter_sumstats(sumstats_f, sep, snpid_col, pval_col, chr_col, bp_col, chr2u
 
 
 def get_df2plot(df, outlined_snps_f, bold_snps_f, lead_snps_f, indep_snps_f,
-    annot_f, downsample_frac, pval_col):
+    annot_f, snps_to_keep_f, downsample_frac, pval_col):
     """
     Select variants which will be plotted. Mark lead and independent significant
     variants if corresponding information is provided.
@@ -206,6 +224,8 @@ def get_df2plot(df, outlined_snps_f, bold_snps_f, lead_snps_f, indep_snps_f,
         bold_snps_f: a name of file with SNP ids to plot with bold dots
         lead_snps_f: a name of file with lead variants
         indep_snps_f: a name of file with independent significant variants
+        snps_to_keep_f: a list of variants to consider for plotting, only these
+            variants are considered when downsampling take place 
         downsample_frac: a fraction of variants which will be sampled from df
             for plotting
         pval_col: a column with p-values in df
@@ -219,10 +239,15 @@ def get_df2plot(df, outlined_snps_f, bold_snps_f, lead_snps_f, indep_snps_f,
     bold_snp_ids = get_snp_ids(bold_snps_f)
     lead_snp_id = get_lead(lead_snps_f)
     indep_snp_id = get_indep_sig(indep_snps_f)
-    annot_snp_ids, annot_snp_labels = get_annot(annot_f)
+    annot_series = get_annot(annot_f)
     outlined_snp_ids = np.unique(np.concatenate((outlined_snp_ids, lead_snp_id)))
     bold_snp_ids = np.unique(np.concatenate((bold_snp_ids, indep_snp_id)))
-    # sample variants 
+    # sample variants
+    if snps_to_keep_f != "NA":
+        snps2keep = get_snp_ids(snps_to_keep_f)
+        ii = df.index.intersection(snps2keep)
+        df = df.loc[ii,:]
+        print("%d SNPs overlap with %s" % (len(df),snps_to_keep_f))
     n = int(downsample_frac*len(df))
     # w = 1/df[pval_col].values
     w = -np.log10(df[pval_col].values)
@@ -233,7 +258,7 @@ def get_df2plot(df, outlined_snps_f, bold_snps_f, lead_snps_f, indep_snps_f,
     # are not in df.index, therefore we should take an index.intersection first.
     outlined_snp_ids = df.index.intersection(outlined_snp_ids)
     bold_snp_ids = df.index.intersection(bold_snp_ids)
-    annot_snp_ids = df.index.intersection(annot_snp_ids)
+    annot_snp_ids = df.index.intersection(annot_series.index)
     snps2keep = np.unique(np.concatenate((outlined_snp_ids, bold_snp_ids,
         snp_sample, annot_snp_ids)))
     df2plot = df.loc[snps2keep,:]
@@ -242,7 +267,7 @@ def get_df2plot(df, outlined_snps_f, bold_snps_f, lead_snps_f, indep_snps_f,
     df2plot.loc[:,"bold"] = False
     df2plot.loc[bold_snp_ids,"bold"] = True
     df2plot.loc[:,"annot"] = ""
-    df2plot.loc[annot_snp_ids,"annot"] = annot_snp_labels
+    df2plot.loc[annot_snp_ids,"annot"] = annot_series[annot_snp_ids]
     print("%d outlined SNPs" % len(outlined_snp_ids))
     print("%d bold SNPs" % len(bold_snp_ids))
     print("%d annotated SNPs" % len(annot_snp_ids))
@@ -330,12 +355,24 @@ if __name__ == "__main__":
 
     np.random.seed(args.seed)
 
+    if args.cb_colors:
+        assert len(args.sumstats) <= len(CB_COLOR_NAMES), "%d is maximum number of sumstats to plot simultaneously with color-blind color scheme" % len(CB_COLOR_NAMES)
+        color_names = CB_COLOR_NAMES
+        color_names_annot = CB_COLOR_NAMES_ANNOT
+        color_dict = CB_COLORS
+    else:
+        # use default colors
+        assert len(args.sumstats) <= len(DEFAULT_COLOR_NAMES), "%d is maximum number of sumstats to plot simultaneously with default color scheme" % len(DEFAULT_COLOR_NAMES)
+        color_names = DEFAULT_COLOR_NAMES
+        color_names_annot = DEFAULT_COLOR_NAMES_ANNOT
+        color_dict = DEFAULT_COLORS
+
     sumstat_dfs = [
         filter_sumstats(s, args.sep[i], args.snp[i], args.p[i], args.chr[i], args.bp[i], args.chr2use)
         for i,s in enumerate(args.sumstats)]
 
-    dfs2plot = [get_df2plot(df, args.outlined[i], args.bold[i], args.lead[i],
-                            args.indep[i], args.annot[i], args.downsample_frac[i], args.p[i])
+    dfs2plot = [get_df2plot(df, args.outlined[i], args.bold[i], args.lead[i], args.indep[i],
+                            args.annot[i], args.snps_to_keep[i], args.downsample_frac[i], args.p[i])
         for i, df in enumerate(sumstat_dfs)]
 
     chr_df = get_chr_df(dfs2plot, args.bp, args.chr, args.between_chr_gap, args.chr2use)
@@ -357,23 +394,24 @@ if __name__ == "__main__":
 
     for i, df in enumerate(dfs2plot):
         # plot normal points
-        color = CB_COLORS[CB_COLOR_NAMES[i]] if args.cb_colors else "C%d" % i
+        color = color_dict[color_names[i]]
         ax.plot(df["x_coord"], df["log10p"], ls=' ', marker='.', ms=3,
             color=color, alpha=args.transparency[i])
     for i, df in enumerate(dfs2plot):
         # plot bold significant and outlined variants "on top" of normal points
-        color = CB_COLORS[CB_COLOR_NAMES[i]] if args.cb_colors else "C%d" % i
+        color = color_dict[color_names[i]]
         df_tmp = df.loc[df["bold"],:]
         ax.plot(df_tmp["x_coord"], df_tmp["log10p"], ls=' ', marker='o', ms=6,
-            color=color, alpha=args.transparency[i])
+            color=color)
         df_tmp = df.loc[df["outlined"],:]
         ax.plot(df_tmp["x_coord"], df_tmp["log10p"], ls=' ', marker='o', ms=8,
             markeredgewidth=0.6, markeredgecolor='k', color=color)
         df_tmp = df.loc[df["annot"]!="",["annot","x_coord", "log10p"]]
         pe = [mpe.Stroke(linewidth=0.8, foreground='black')]
         for row in df_tmp.itertuples():
+            color = color_dict[color_names_annot[i]]
             ax.annotate(row.annot, xy=(row.x_coord, row.log10p), xycoords='data',
-                xytext=(2,2), textcoords='offset points', color=color, fontsize=14,
+                xytext=(2,2), textcoords='offset points', color=color, fontsize=12,
                 style='italic', fontweight='heavy', path_effects=pe)
 
 
