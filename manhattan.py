@@ -13,7 +13,8 @@ import matplotlib.patheffects as mpe
 # Default colors are similar to matplotlib 2.0 defaults and are taken from:
 # https://github.com/vega/vega/wiki/Scales#scale-range-literals
 DEFAULT_COLOR_NAMES = [1,3,5,7,9,11,13,15,17,19]
-DEFAULT_COLOR_NAMES_ANNOT = [2,4,6,8,10,12,14,16,18,20]
+DEFAULT_COLOR_NAMES_ANNOT = [1,3,5,7,9,11,13,15,17,19] # [2,4,6,8,10,12,14,16,18,20]
+# colors corresponding to even indices are lighter analogs of colors with odd indices, e.g. DEFAULT_COLORS[2] is a light version of DEFAULT_COLORS[1]
 DEFAULT_COLORS = {1:"#1f77b4", 2:"#aec7e8", 3:"#ff7f0e", 4:"#ffbb78",
                   5:"#2ca02c", 6:"#98df8a", 7:"#d62728", 8:"#ff9896",
                   9:"#9467bd", 10:"#c5b0d5", 11:"#8c564b", 12:"#c49c94",
@@ -418,8 +419,11 @@ if __name__ == "__main__":
         for row in df_tmp.itertuples():
             color = color_dict[color_names_annot[i]]
             ax.annotate(row.annot, xy=(row.x_coord, row.log10p), xycoords='data',
-                xytext=(2,2), textcoords='offset points', color=color, fontsize=12,
-                style='italic', fontweight='heavy', path_effects=pe)
+                xytext=(2,2), textcoords='offset points', color=color,
+                fontsize=12, style='italic', fontweight='heavy',
+                # path_effects=pe, # uncomment path_effects to have a black border of the label symbols 
+                bbox={"boxstyle":"square, pad=0.02", "facecolor":"white",
+                      "edgecolor":"none","alpha":0.6})
 
 
     ax.hlines([-np.log10(args.p_thresh)], 0, 1, colors='k', linestyles='dotted',
