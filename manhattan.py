@@ -100,6 +100,8 @@ def parse_args(args):
         help="Use colors designed for color-blind people")
     parser.add_argument("--seed", type=int, default=1, help="Random seed")
     parser.add_argument("--out", default="manhattan.png", help="Out file name")
+    parser.add_argument("--separate-sumstats", action="store_true",
+        help="Plot each sumstat in a separate subplot.")
 
     parser.add_argument("--y-label", default="P",
         help="Label of y axis. Label in the figure will be: -log10(y_label).")
@@ -386,9 +388,13 @@ if __name__ == "__main__":
     for i,df in enumerate(dfs2plot):
         add_coords(df, args.chr[i], args.bp[i], args.p[i], chr_df)
 
+    n_subplots = len(dfs2plot) if args.separate_sumstats else 1
+
     # make plot
     print("Making plot")
-    fig, ax = plt.subplots(figsize=(14,5), dpi=200)
+    fig, axarr = plt.subplots(n_subplots, squeeze=False, figsize=(14,5*n_subplots), dpi=200)
+    axarr = axarr[:,0] # squeeze second dimention since we don't need it here
+
 
     # find upper limit for Y axis
     y_up = max([df["log10p"].max() for df in dfs2plot])
@@ -396,10 +402,14 @@ if __name__ == "__main__":
     y_up *= 1.05
 
     if args.striped_background:
-        add_striped_background(chr_df, ax, y_up)
+        for ax in axarr:
+            add_striped_background(chr_df, ax, y_up)
 
     for i, df in enumerate(dfs2plot):
         # plot normal points
+        ax_i = i if args.separate_sumstats else 0
+        ax = axarr[ax_i]
+        
         color = color_dict[color_names[i]]
         ax.plot(df["x_coord"], df["log10p"], ls=' ', marker='.', ms=2,
             color=color, alpha=args.transparency[i])
@@ -407,6 +417,9 @@ if __name__ == "__main__":
         legends_handles.append(patch)
     for i, df in enumerate(dfs2plot):
         # plot bold significant and outlined variants "on top" of normal points
+        ax_i = i if args.separate_sumstats else 0
+        ax = axarr[ax_i]
+        
         color = color_dict[color_names[i]]
         df_tmp = df.loc[df["bold"],:]
         ax.plot(df_tmp["x_coord"], df_tmp["log10p"], ls=' ', marker='o', ms=5,
@@ -425,30 +438,31 @@ if __name__ == "__main__":
                 bbox={"boxstyle":"square, pad=0.02", "facecolor":"white",
                       "edgecolor":"none","alpha":0.6})
 
+    for i,ax in enumerate(axarr):
+        ax.hlines([-np.log10(args.p_thresh)], 0, 1, colors='k', linestyles='dotted',
+            transform=ax.get_yaxis_transform())
 
-    ax.hlines([-np.log10(args.p_thresh)], 0, 1, colors='k', linestyles='dotted',
-        transform=ax.get_yaxis_transform())
+        x_ticks = chr_df["start"] + 0.5*chr_df["rel_size"]
+        ax.set_xticks(x_ticks)
+        ax.set_xticklabels(map(str, x_ticks.index))
 
-    x_ticks = chr_df["start"] + 0.5*chr_df["rel_size"]
-    ax.set_xticks(x_ticks)
-    ax.set_xticklabels(map(str, x_ticks.index))
+        ax.set_xlim((-0.1,
+            chr_df.loc[chr_df.index[-1], "start"] + chr_df.loc[chr_df.index[-1], "rel_size"] + 0.1))
+        y_low = ax.get_ylim()[0]
+        ax.set_ylim((0-0.005*y_up, y_up))
+        # remove top and right spines
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        # add offset for left spine
+        ax.spines['left'].set_position(('outward',5))
+        ax.spines['bottom'].set_position(('outward',5))
 
-    ax.set_xlim((-0.1,
-        chr_df.loc[chr_df.index[-1], "start"] + chr_df.loc[chr_df.index[-1], "rel_size"] + 0.1))
-    y_low = ax.get_ylim()[0]
-    ax.set_ylim((0-0.005*y_up, y_up))
-    # remove top and right spines
-    ax.spines['right'].set_visible(False)
-    ax.spines['top'].set_visible(False)
-    # add offset for left spine
-    ax.spines['left'].set_position(('outward',5))
-    ax.spines['bottom'].set_position(('outward',5))
+        ax.set_xlabel("Chromosome")
+        ax.set_ylabel(r"$\mathrm{-log_{10}(%s)}$" % args.y_label)
 
-    ax.set_xlabel("Chromosome")
-    ax.set_ylabel(r"$\mathrm{-log_{10}(%s)}$" % args.y_label)
+        if not args.no_legend:
+            ax.legend(handles=legends_handles[i:i+1], loc='best')
 
-    if not args.no_legend:
-        ax.legend(handles=legends_handles, loc='best')
 
     plt.tight_layout()
 
