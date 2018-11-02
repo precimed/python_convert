@@ -6,8 +6,8 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 from matplotlib.collections import PatchCollection
-from matplotlib.patches import Rectangle
 import matplotlib.patheffects as mpe
 
 # Default colors are similar to matplotlib 2.0 defaults and are taken from:
@@ -102,6 +102,8 @@ def parse_args(args):
 
     parser.add_argument("--y-label", default="P",
         help="Label of y axis. Label in the figure will be: -log10(y_label).")
+    parser.add_argument("--no-legend", action="store_true",
+        help="Don't add legend to the figure.")
 
     return parser.parse_args(args)
 
@@ -342,7 +344,7 @@ def add_striped_background(chr_df, ax, y_up):
         x = chr_df.loc[c,"start"]
         y = 0
         width = chr_df.loc[c,"rel_size"]
-        rect = Rectangle((x, y), width, height)
+        rect = mpatches.Rectangle((x, y), width, height)
         background_rect.append(rect)
     pc = PatchCollection(background_rect, facecolor='#AEA79F', alpha=0.3,
                          edgecolor='None')
@@ -366,6 +368,9 @@ if __name__ == "__main__":
         color_names = DEFAULT_COLOR_NAMES
         color_names_annot = DEFAULT_COLOR_NAMES_ANNOT
         color_dict = DEFAULT_COLORS
+
+    legend_labels = [os.path.splitext(os.path.basename(s))[0] for s in args.sumstats]
+    legends_handles = []
 
     sumstat_dfs = [
         filter_sumstats(s, args.sep[i], args.snp[i], args.p[i], args.chr[i], args.bp[i], args.chr2use)
@@ -397,6 +402,8 @@ if __name__ == "__main__":
         color = color_dict[color_names[i]]
         ax.plot(df["x_coord"], df["log10p"], ls=' ', marker='.', ms=3,
             color=color, alpha=args.transparency[i])
+        patch = mpatches.Patch(color=color, label=legend_labels[i])
+        legends_handles.append(patch)
     for i, df in enumerate(dfs2plot):
         # plot bold significant and outlined variants "on top" of normal points
         color = color_dict[color_names[i]]
@@ -434,6 +441,9 @@ if __name__ == "__main__":
 
     ax.set_xlabel("Chromosome")
     ax.set_ylabel(r"$\mathrm{-log_{10}(%s)}$" % args.y_label)
+
+    if not args.no_legend:
+        ax.legend(handles=legends_handles, loc='best')
 
     plt.tight_layout()
 
