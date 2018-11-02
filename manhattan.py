@@ -401,7 +401,7 @@ if __name__ == "__main__":
     for i, df in enumerate(dfs2plot):
         # plot normal points
         color = color_dict[color_names[i]]
-        ax.plot(df["x_coord"], df["log10p"], ls=' ', marker='.', ms=3,
+        ax.plot(df["x_coord"], df["log10p"], ls=' ', marker='.', ms=2,
             color=color, alpha=args.transparency[i])
         patch = mpatches.Patch(color=color, label=legend_labels[i])
         legends_handles.append(patch)
@@ -409,7 +409,7 @@ if __name__ == "__main__":
         # plot bold significant and outlined variants "on top" of normal points
         color = color_dict[color_names[i]]
         df_tmp = df.loc[df["bold"],:]
-        ax.plot(df_tmp["x_coord"], df_tmp["log10p"], ls=' ', marker='o', ms=6,
+        ax.plot(df_tmp["x_coord"], df_tmp["log10p"], ls=' ', marker='o', ms=5,
             color=color)
         df_tmp = df.loc[df["outlined"],:]
         ax.plot(df_tmp["x_coord"], df_tmp["log10p"], ls=' ', marker='o', ms=8,
@@ -433,7 +433,8 @@ if __name__ == "__main__":
     ax.set_xticks(x_ticks)
     ax.set_xticklabels(map(str, x_ticks.index))
 
-    ax.set_xlim((-0.1, chr_df.loc[chr_df.index[-1], "start"] + chr_df.loc[chr_df.index[-1], "rel_size"] + 0.1))
+    ax.set_xlim((-0.1,
+        chr_df.loc[chr_df.index[-1], "start"] + chr_df.loc[chr_df.index[-1], "rel_size"] + 0.1))
     y_low = ax.get_ylim()[0]
     ax.set_ylim((0-0.005*y_up, y_up))
     # remove top and right spines
