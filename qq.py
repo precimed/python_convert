@@ -214,17 +214,18 @@ def get_xy_from_p(p, top_as_dot, p_weights, nbins=200):
     i = np.argsort(p)
     p = p[i]
     p_weights = p_weights[i]
-    cum_p_weights = np.cumsum(p_weights)
+    p_ecdf = np.concatenate([[0], np.cumsum(p_weights)])
 
     y = np.logspace(np.log10(p[-1]), np.log10(p[top_as_dot]), nbins)
-    y_i = np.searchsorted(p, y, side='left')
-    y_i[0] = len(p) - 1  # last index in cum_p_weights
-    y_i[-1] = top_as_dot # top_as_dot index in cum_p_weights
-    p_cdf = cum_p_weights[y_i]
-    x = -np.log10(p_cdf)
+    i = np.searchsorted(p, y, side='right')
+    i[0] = len(p)  # last index in p_ecdf
+    i[-1] = top_as_dot+1 # top_as_dot index in p_ecdf
+    # estimate standard uniform quantiles corresponding to y observed quantiles
+    uniform_quantiles = p_ecdf[i]
+    x = -np.log10(uniform_quantiles)
     y = -np.log10(y)
     # if top_as_dot = 0, then x_dot and y_dot are empty arrays
-    x_dot = -np.log10(cum_p_weights[:top_as_dot])
+    x_dot = -np.log10(p_ecdf[1:top_as_dot+1])
     y_dot = -np.log10(p[:top_as_dot]).values
     return x, y, x_dot, y_dot
 
