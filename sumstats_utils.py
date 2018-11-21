@@ -134,7 +134,7 @@ default_cnames = {
     'B': cols.BETA,
     'BETA': cols.BETA,
     'MTAG_BETA': cols.BETA,
-    'LOG_ODDS': cols.LOGODDS,
+    'LOGODDS': cols.LOGODDS,
     'EFFECTS': cols.BETA,
     'EFFECT': cols.BETA,
     'SIGNED_SUMSTAT': 'SIGNED_SUMSTAT',
