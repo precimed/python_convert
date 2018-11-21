@@ -869,9 +869,7 @@ def make_zscore(args, log):
         elif cols.BETA in columns: args.effect = cols.BETA
         elif cols.OR in columns: args.effect = cols.OR
         elif cols.LOGODDS in columns: args.effect = cols.LOGODDS
-        else:
-            log.log('Warning: signed effect column is not detected in {}. Enable --a1-inc'.format(args.sumstats))
-            args.a1_inc=True
+        else: raise(ValueError('Warning: signed effect column is not detected in {}. Enable --a1-inc'.format(args.sumstats)))
         effect_size_column_count = np.sum([int(c in columns) for c in [cols.Z, cols.BETA, cols.OR, cols.LOGODDS]])
         if effect_size_column_count > 1: log.log('Warning: Multiple columns indicate effect direction')
         if effect_size_column_count == 1: log.log('Use {} column as effect direction.'.format(args.effect))
