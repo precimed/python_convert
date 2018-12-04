@@ -107,6 +107,11 @@ def parse_args(args):
         help="Label of y axis. Label in the figure will be: -log10(y_label).")
     parser.add_argument("--no-legend", action="store_true",
         help="Don't add legend to the figure.")
+    parser.add_argument("--legend-labels", nargs="+", default=["NA"],
+        help="A list of labels for sumstats to use in the legend in the corresponding order. "
+        "If '--no-legend' is specified, this argument is ignored. If both this and "
+        "'--no-legend' arguments are absent, corresponding file names are used in "
+        "the legend.")
 
     return parser.parse_args(args)
 
@@ -153,12 +158,15 @@ def process_args(args):
     assert len(args.p) == n, "--p " + msg
     assert len(args.snps_to_keep) == n, "--snps-to-keep" + msg
     assert len(args.downsample_frac) == n, "--downsample-frac" + msg
+    assert len(args.legend_labels) == n, "--legend-labels" + msg
+
 
 def get_snp_ids(fname):
     if fname == "NA":
         return np.array([])
     else:
         return pd.read_table(fname,header=None,squeeze=True).values
+
 
 def get_lead(fname):
     if (fname == "NA") or (os.stat(fname).st_size == 0):
@@ -167,12 +175,14 @@ def get_lead(fname):
         df = pd.read_table(fname)
         return df.loc[df.is_locus_lead,"LEAD_SNP"].values
 
+
 def get_indep_sig(fname):
     if (fname == "NA") or (os.stat(fname).st_size == 0):
         return np.array([])
     else:
         df = pd.read_table(fname)
         return df["INDEP_SNP"].values
+
 
 def get_annot(fname):
     """
@@ -372,7 +382,8 @@ if __name__ == "__main__":
         color_names_annot = DEFAULT_COLOR_NAMES_ANNOT
         color_dict = DEFAULT_COLORS
 
-    legend_labels = [os.path.splitext(os.path.basename(s))[0] for s in args.sumstats]
+    legend_labels = [os.path.splitext(os.path.basename(args.sumstats[i]))[0] if ll == "NA" else ll
+        for i,ll in enumerate(args.legend_labels)]
     legends_handles = []
 
     sumstat_dfs = [
@@ -461,7 +472,8 @@ if __name__ == "__main__":
         ax.set_ylabel(r"$\mathrm{-log_{10}(%s)}$" % args.y_label)
 
         if not args.no_legend:
-            ax.legend(handles=legends_handles[i:i+1], loc='best')
+            handles = legends_handles[i:i+1] if args.separate_sumstats else legends_handles
+            ax.legend(handles=handles, loc='best')
 
 
     plt.tight_layout()
