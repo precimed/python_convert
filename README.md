@@ -12,10 +12,7 @@ NA label for missing data, etc.
 ``mat`` utility re-saves summary stats in MATLAB format for cond/conj pleiotropy analysis.
 ``lift`` utility can lift genomic corredinats across genomic builds, and SNP rs numbers to a newer versions of SNPdb.
 
-Some of the steps require additional data. Examples can be found here:
-
-https://www.dropbox.com/sh/pj7bppdqka4qix9/AAAlhJQuCW00bQyGL0bVGHbta?dl=0
-
+Some of the steps require additional data. Examples can be found [here](http://norment.myftp.org:8080/python_convert/).
 
 ```
 usage: sumstats.py [-h]
