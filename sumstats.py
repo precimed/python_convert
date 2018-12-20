@@ -36,10 +36,15 @@ MASTHEAD += "*******************************************************************
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description="A collection of various utilities for GWAS summary statistics.")
+
+    parent_parser = argparse.ArgumentParser(add_help=False)
+    parent_parser.add_argument("--log", type=str, default=None, help="filename for the log file. Default is <out>.log")
+    parent_parser.add_argument("--log-append", action="store_true", default=False, help="append to existing log file. Default is to erase previous log file if it exists.")
+
     subparsers = parser.add_subparsers()
 
     # 'csv' utility : load raw summary statistics file and convert it into a standardized format
-    parser_csv = subparsers.add_parser("csv",
+    parser_csv = subparsers.add_parser("csv", parents=[parent_parser],
         help='Load raw summary statistics file and convert it into a standardized format: '
         'tab-separated file with standard column names, standard chromosome labels, NA label for missing data, etc. '
         'The conversion does not change the number of lines in the input files (e.g. no filtering is done on markers). '
@@ -99,7 +104,7 @@ def parse_args(args):
     parser_csv.set_defaults(func=make_csv)
 
     # 'qc' utility: miscellaneous quality control and filtering procedures
-    parser_qc = subparsers.add_parser("qc",
+    parser_qc = subparsers.add_parser("qc", parents=[parent_parser],
         help="Miscellaneous quality control and filtering procedures")
 
     parser_qc.add_argument("--sumstats", type=str, default='-',
@@ -150,7 +155,7 @@ def parse_args(args):
     parser_qc.set_defaults(func=make_qc)
 
     # 'zscore' utility: calculate z-score from p-value column and effect size column
-    parser_zscore = subparsers.add_parser("zscore",
+    parser_zscore = subparsers.add_parser("zscore", parents=[parent_parser],
         help="Calculate z-score from p-value column and effect size column")
 
     parser_zscore.add_argument("--sumstats", type=str, help="[REQUIRED] Raw input file with summary statistics. ")
@@ -170,7 +175,7 @@ def parse_args(args):
     parser_zscore.set_defaults(func=make_zscore)
 
     # 'mat' utility: load summary statistics into matlab format
-    parser_mat = subparsers.add_parser("mat", help="Create mat files that can "
+    parser_mat = subparsers.add_parser("mat", parents=[parent_parser], help="Create mat files that can "
         "be used as an input for cond/conj FDR and for CM3 model. "
         "Takes csv files (created with the csv task of this script). "
         "Require columns: SNP, P, and one of the signed summary statistics columns (BETA, OR, Z, LOGODDS). "
@@ -204,7 +209,7 @@ def parse_args(args):
     parser_mat.set_defaults(func=make_mat)
 
     # 'lift' utility: lift RS numbers to a newer version of SNPdb, and/or liftover chr:pos to another genomic build using UCSC chain files
-    parser_lift = subparsers.add_parser("lift",
+    parser_lift = subparsers.add_parser("lift", parents=[parent_parser],
         help="Lift RS numbers to a newer version of SNPdb, "
         "and/or liftover chr:pos to another genomic build using UCSC chain files. "
         "WARNING: this utility may use excessive amount of memory (up and beyong 32 GB of RAM).")
@@ -234,7 +239,7 @@ def parse_args(args):
     parser_lift.set_defaults(func=make_lift)
 
     # 'clump' utility: clump summary stats, produce lead SNP report, produce candidate SNP report
-    parser_clump = subparsers.add_parser("clump",
+    parser_clump = subparsers.add_parser("clump", parents=[parent_parser],
         help="""Perform LD-based clumping of summary stats. This works similar to FUMA snp2gene functionality (http://fuma.ctglab.nl/tutorial#snp2gene).
     Step 1. Re-save summary stats into one file for each chromosome.
     Step 2a Use 'plink --clump' to find independent significant SNPs (default r2=0.6)
@@ -271,7 +276,7 @@ def parse_args(args):
     parser_clump.set_defaults(func=make_clump)
 
     # 'rs' utility: augument summary statistic file with SNP RS number from reference file
-    parser_rs = subparsers.add_parser("rs",
+    parser_rs = subparsers.add_parser("rs", parents=[parent_parser],
         help="Augument summary statistic file with SNP RS number from reference file. "
         "Merging is done on chromosome and position. If SNP column already exists in --sumstats file, it will be overwritten.")
 
@@ -288,7 +293,7 @@ def parse_args(args):
     parser_rs.set_defaults(func=make_rs)
 
     # 'ls' utility: display information about columns of a standardized summary statistics file
-    parser_ls = subparsers.add_parser("ls",
+    parser_ls = subparsers.add_parser("ls", parents=[parent_parser],
         help="Report information about standard sumstat files, "
         "including the set of columns available, number of SNPs, etc.")
 
@@ -299,7 +304,7 @@ def parse_args(args):
     parser_ls.set_defaults(func=make_ls)
 
     # 'mat-to-csv' utility: convert matlab .mat file with logpvec and zvec into CSV files
-    parser_mattocsv = subparsers.add_parser("mat-to-csv",
+    parser_mattocsv = subparsers.add_parser("mat-to-csv", parents=[parent_parser],
         help="Convert matlab .mat file with logpvec, zvec and (optionally) nvec into CSV files.")
 
     parser_mattocsv.add_argument("--mat", type=str, help="[required] Input mat file.")
@@ -314,7 +319,7 @@ def parse_args(args):
     parser_mattocsv.set_defaults(func=mat_to_csv)
 
     # 'ldsc-to-mat' utility: convert data from LD score regression formats to .mat files
-    parser_ldsctomat = subparsers.add_parser("ldsc-to-mat",
+    parser_ldsctomat = subparsers.add_parser("ldsc-to-mat", parents=[parent_parser],
         help="Convert .sumstats, .ldscore, .M, .M_5_50 and "
         "binary .annot files from LD score regression to .mat files.")
 
@@ -337,7 +342,7 @@ def parse_args(args):
     parser_ldsctomat.set_defaults(func=ldsc_to_mat)
 
     # 'frq-to-mat' utility: convert allele frequency from FRQ plink format to .mat files
-    parser_frqtomat = subparsers.add_parser("frq-to-mat",
+    parser_frqtomat = subparsers.add_parser("frq-to-mat", parents=[parent_parser],
         help="Convert .frq files plink from .mat files.")
 
     parser_frqtomat.add_argument("--ref", type=str, help="Tab-separated file with list of referense SNPs.")
@@ -352,7 +357,7 @@ def parse_args(args):
     parser_frqtomat.set_defaults(func=frq_to_mat)
 
     # 'ref-to-mat' utility: convert reference files  to .mat files
-    parser_reftomat = subparsers.add_parser("ref-to-mat",
+    parser_reftomat = subparsers.add_parser("ref-to-mat", parents=[parent_parser],
         help="Convert reference files to .mat files.")
 
     parser_reftomat.add_argument("--ref", type=str, help="Tab-separated file with list of referense SNPs.")
@@ -362,7 +367,7 @@ def parse_args(args):
     parser_reftomat.set_defaults(func=ref_to_mat)
 
     # 'ldsum' utility: convert plink .ld.gz files (pairwise ld r2) to ld scores
-    parser_ldsum = subparsers.add_parser("ldsum",
+    parser_ldsum = subparsers.add_parser("ldsum", parents=[parent_parser],
         help="convert plink .ld.gz files (pairwise ld r2) to ld scores")
 
     parser_ldsum.add_argument("--bim", type=str, help="[required] plink bim file")
@@ -400,7 +405,7 @@ def parse_args(args):
     parser_ldsum.set_defaults(func=ldsum)
 
     # 'diff-mat' utility: compare two .mat files with logpvec, zvec and nvec, and report the differences
-    parser_diffmat = subparsers.add_parser("diff-mat",
+    parser_diffmat = subparsers.add_parser("diff-mat", parents=[parent_parser],
         help="Compare two .mat files with logpvec, zvec and nvec, "
         "and report the differences.")
 
@@ -417,7 +422,7 @@ def parse_args(args):
     parser_diffmat.set_defaults(func=diff_mat)
 
     # 'neff' utility: generate N column from NCASE and NCONTROL
-    parser_neff = subparsers.add_parser("neff",
+    parser_neff = subparsers.add_parser("neff", parents=[parent_parser],
         help="generate N column from NCASE and NCONTROL, as 4 / (1 / NCASE + 1 / NCONTROL)")
     parser_neff.add_argument("--sumstats", type=str, default='-',
         help="Raw input file with summary statistics. "
@@ -948,7 +953,7 @@ def make_mat(args, log):
         df_result = pd.merge(df_ref, df_sumstats, how='left', on='SNP')
         num_matches = df_result[cols.PVAL].notnull().sum()
         if num_matches == 0: raise(ValueError("No SNPs match after joining with reference data"))
-        eprint("{f}: {n} SNPs matched with reference file".format(f=args.sumstats, n=num_matches))
+        log.log("{f}: {n} SNPs matched with reference file".format(f=args.sumstats, n=num_matches))
         sio.savemat(args.out, {'logpvec'+args.trait: -np.log10(df_result[cols.PVAL].values)}, format='5', do_compression=False, oned_as='column', appendmat=False)
         log.log("%s created" % args.out)
         return
@@ -1918,9 +1923,9 @@ class Logger(object):
     '''
     Lightweight logging.
     '''
-    def __init__(self, fh):
+    def __init__(self, fh, mode):
         self.fh = fh
-        self.log_fh = open(fh + '.log', 'w') if (fh != '-') else None
+        self.log_fh = open(fh, mode) if (fh is not None) else None
 
         # remove error file from previous run if it exists
         try:
@@ -1935,6 +1940,7 @@ class Logger(object):
         eprint(msg)
         if self.log_fh:
             self.log_fh.write(str(msg).rstrip() + '\n')
+            self.log_fh.flush()
 
     def error(self, msg):
         '''
@@ -2003,7 +2009,7 @@ if __name__ == "__main__":
     if args.out is None:
         raise ValueError('--out is required.')
 
-    log = Logger(args.out)
+    log = Logger(args.log if args.log else (args.out + '.log' if (args.out != '-') else None), 'a' if args.log_append else 'w')
     start_time = time.time()
 
     try:
