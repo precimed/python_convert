@@ -668,7 +668,7 @@ def make_csv(args, log):
         n_snps = 0
         for chunk_index, chunk in enumerate(reader):
             if chunk_index==0:
-                log.log('Column types:\n\t' + '\n\t'.join([column + ':' + str(dtype) for (column, dtype) in zip(chunk.columns, chunk.dtypes)]))
+                log.log('Column types: ' + ', '.join([column + ':' + str(dtype) for (column, dtype) in zip(chunk.columns, chunk.dtypes)]))
             n_snps += len(chunk)
         log.log("Done. {n} SNPs read from {f}".format(n=n_snps, f=args.out))
 
@@ -897,7 +897,7 @@ def make_zscore(args, log):
     n_snps = 0
     with (open(args.out, 'a') if args.out != sys.stdout else sys.stdout) as out_f:
         for chunk_index, chunk in enumerate(reader):
-            if chunk_index==0: log.log('Column types:\n\t' + '\n\t'.join([column + ':' + str(dtype) for (column, dtype) in zip(chunk.columns, chunk.dtypes)]))
+            if chunk_index==0: log.log('Column types: ' + ', '.join([column + ':' + str(dtype) for (column, dtype) in zip(chunk.columns, chunk.dtypes)]))
             if args.a1_inc:
                 effect_sign = np.ones(len(chunk))
             elif signed_effect:
@@ -1019,7 +1019,7 @@ def make_mat(args, log):
             log.log("Reference dict contains {d} snps.".format(d=len(ref_dict)))
 
             log.log('Reading summary statistics file {}...'.format(args.sumstats))
-            log.log('Column types:\n\t' + '\n\t'.join([column + ':' + str(dtype) for (column, dtype) in zip(ss_chunk.columns, ss_chunk.dtypes)]))
+            log.log('Column types: ' + ', '.join([column + ':' + str(dtype) for (column, dtype) in zip(ss_chunk.columns, ss_chunk.dtypes)]))
 
         # (END) special handling of the first chunk
 
