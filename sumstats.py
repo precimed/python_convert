@@ -78,6 +78,8 @@ def parse_args(args):
         help="Skip validation of the resulting csv file")
     parser_csv.add_argument("--sep", default='\s+', type=str, choices=[',', ';', '\t', ' '],
         help="Delimiter to use (',' ';' $' ' or $'\\t'). By default uses delim_whitespace option in pandas.read_table.")
+    parser_csv.add_argument("--na-values", type=str, nargs='+',
+        help="Additional strings to recognize as NA/NaN.")
     parser_csv.add_argument("--all-snp-info-23-and-me", default=None, type=str,
         help="all_snp_info file for summary stats in 23-and-me format")
     parser_csv.add_argument("--qc-23-and-me", action="store_true", default=False,
@@ -556,9 +558,9 @@ def make_csv(args, log):
         for line in header: log.log(line)
 
     if args.header is None:
-        reader = pd.read_table(args.sumstats, dtype=str, sep=args.sep, chunksize=args.chunksize)
+        reader = pd.read_table(args.sumstats, dtype=str, sep=args.sep, chunksize=args.chunksize, na_values=args.na_values)
     else:
-        reader = pd.read_table(args.sumstats, dtype=str, sep=args.sep, chunksize=args.chunksize, header=None, names=args.header.split())
+        reader = pd.read_table(args.sumstats, dtype=str, sep=args.sep, chunksize=args.chunksize, na_values=args.na_values, header=None, names=args.header.split())
     reader_23_and_me = pd.read_table(args.all_snp_info_23_and_me, dtype=str, sep=args.sep, chunksize=args.chunksize) if args.all_snp_info_23_and_me else None
     n_snps = 0
     max_n_val = np.nan; max_ncase_val = np.nan; max_ncontrol_val = np.nan
