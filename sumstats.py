@@ -712,7 +712,24 @@ def make_qc(args, log):
     if args.fix_dtype_cols is None: args.fix_dtype_cols = []
     if args.require_cols is None: args.require_cols = []
 
+    # Read summary sumstats file...
+    log.log('Reading sumstats file {}...'.format(args.sumstats))
+    sumstats = pd.read_table(args.sumstats, sep='\t', dtype=str)
     exclude_ranges = make_ranges(args.exclude_ranges, log)
+    log.log("Sumstats file contains {d} markers.".format(d=len(sumstats)))
+
+    if (args.exclude_ranges is not None) and (('BP' not in sumstats) or ('CHR' not in sumstats)):
+        log.log('Warning: skip --exclude-ranges ("BP" and/or "CHR" columns not found in {})'.format(args.sumstats))
+        args.exclude_ranges = None
+    missing_dropna_cols = [x for x in args.dropna_cols if x not in sumstats]
+    missing_fix_dtype_cols = [x for x in args.fix_dtype_cols if x not in sumstats]
+    if missing_dropna_cols:
+        log.log('Warning: can not apply --dropna-cols to {}; columns are missing'.format(', '.join(missing_dropna_cols)))
+        args.dropna_cols = [x for x in args.dropna_cols if x not in missing_dropna_cols]
+    if missing_fix_dtype_cols:
+        log.log('Warning: can not apply --fix-dtype-cols to {}; columns are missing'.format(', '.join(missing_fix_dtype_cols)))
+        args.fix_dtype_cols = [x for x in args.fix_dtype_cols if x not in missing_fix_dtype_cols]
+
     if args.exclude_ranges is not None:
         args.dropna_cols.extend(['CHR', 'BP'])
         args.fix_dtype_cols.extend(['CHR', 'BP'])
@@ -720,11 +737,6 @@ def make_qc(args, log):
          for col in args.fix_dtype_cols:
             if cols_type_map[col] == int:
                 args.dropna_cols.append(col)
-
-    # Read summary sumstats file...
-    log.log('Reading sumstats file {}...'.format(args.sumstats))
-    sumstats = pd.read_table(args.sumstats, sep='\t', dtype=str)
-    log.log("Sumstats file contains {d} markers.".format(d=len(sumstats)))
 
     # Check all required columns
     args.require_cols = [col.upper() for col in args.require_cols]
@@ -911,6 +923,7 @@ def make_zscore(args, log):
                     raise ValueError("OR column contains negative values")
                 effect_sign = np.sign(chunk[args.effect].values - 1)
                 effect_sign[effect_sign == 0] = 1
+            chunk[cols.PVAL] = pd.to_numeric(chunk[cols.PVAL], errors='coerce')
             chunk[cols.Z] = -stats.norm.ppf(chunk[cols.PVAL].values*0.5)*effect_sign.astype(np.float64)
             chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA')
             n_snps += len(chunk)
