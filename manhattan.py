@@ -213,9 +213,11 @@ def filter_sumstats(sumstats_f, sep, snpid_col, pval_col, chr_col, bp_col, chr2u
     """
     print("Filtering %s" % sumstats_f)
     cols2use = [snpid_col, pval_col, chr_col, bp_col]
-    df = pd.read_table(sumstats_f, usecols=cols2use, index_col=snpid_col, sep=sep,
+    df = pd.read_table(sumstats_f, usecols=cols2use, sep=sep,
         dtype={chr_col:str})
     print("%d SNPs in %s" % (len(df), sumstats_f))
+    df = df.loc[~df[snpid_col].isnull(), :].set_index(snpid_col)
+    print("%d SNPs with non-null SNP" % len(df))
     # TODO: replace dropna with df = df.loc[df[pval_col]>0,:], should be ~ 1.5x faster
     df.dropna(subset=[pval_col], how="all", inplace = True)
     print("%d SNPs with defined p-value" % len(df))
