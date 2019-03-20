@@ -105,6 +105,20 @@ def parse_args(args):
         help="Keep all non-standard column names from --sumstats file to keep in --out file. Columns names will UPPERCASEed.")
     parser_csv.set_defaults(func=make_csv)
 
+    # 'variantid' utility : load raw summary statistics file and convert it into a standardized format
+    parser_variantid = subparsers.add_parser("variantid", parents=[parent_parser],
+        help='Add VARIANT_ID column, with CHR:BP:A1:A2, where A1 and A2 codes are taking from the reference ')
+
+    parser_variantid.add_argument("--sumstats", type=str, default='-',
+        help="Raw input file with summary statistics. "
+        "Default is '-', e.i. to read from sys.stdin (input pipe).")
+    parser_variantid.add_argument("--out", type=str, default='-',
+        help="File to output the result. "
+        "Default is '-', e.i. to write to sys.stdout (output pipe).")
+    parser_variantid.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
+    parser_variantid.add_argument("--ref", type=str, help="[required] Tab-separated file with list of referense SNPs.")
+    parser_variantid.set_defaults(func=make_variantid)
+
     # 'qc' utility: miscellaneous quality control and filtering procedures
     parser_qc = subparsers.add_parser("qc", parents=[parent_parser],
         help="Miscellaneous quality control and filtering procedures")
@@ -944,6 +958,13 @@ def _reverse_complement_variant(variant):
     return ("".join([_base_complement[b] for b in variant[0][::-1]]),
             "".join([_base_complement[b] for b in variant[1][::-1]]))
 
+def _is_alleles_match(variant_x, variant_y):
+    if variant_x == variant_y: return True
+    if variant_x == variant_y[::-1]: return True
+    if variant_x == _reverse_complement_variant(variant_y): return True
+    if variant_x == _reverse_complement_variant(variant_y)[::-1]: return True
+    return False
+
 def make_mat(args, log):
     """
     Takes csv files (created with the csv task of this script).
@@ -1103,6 +1124,47 @@ def make_mat(args, log):
     log.log("%s created" % args.out)
 
 ### =================================================================================
+###                          Implementation for parser_variantid
+### =================================================================================
+def make_variantid(args, log):
+    if args.sumstats == '-': args.sumstats = sys.stdin
+    if args.out == '-': args.out = sys.stdout
+    check_input_file(args.sumstats)
+    check_input_file(args.ref)
+    check_output_file(args.out, args.force)
+
+    log.log('Reading summary statistics file {}...'.format(args.sumstats))
+    df = pd.read_table(args.sumstats, sep='\t')
+    log.log('Done, {} markers found'.format(len(df)))
+
+    log.log('Reading reference file {}...'.format(args.ref))
+    ref = pd.read_table(args.ref, sep='\t', usecols=[cols.CHR, cols.BP, cols.A1, cols.A2])
+    log.log("Reference dict contains {d} snps.".format(d=len(ref)))
+
+    log.log('Merging summary statistics file with the reference...')
+    ref['DUP']=ref.duplicated(subset=['CHR', 'BP'], keep=False)
+    df['index'] = df.index
+
+    df_dups = pd.merge(df[['index', 'CHR', 'BP', 'A1', 'A2']], ref[['CHR', 'BP', 'A1', 'A2']][ref['DUP']], on=['CHR', 'BP'], how='inner', suffixes=('', '_ref'))
+    df_dups = df_dups[[_is_alleles_match((row.A1, row.A2), (row.A1_ref, row.A2_ref)) for _, row in df_dups.iterrows()]].copy()
+
+    df_nodups = pd.merge(df[['index', 'CHR', 'BP', 'A1', 'A2']], ref[['CHR', 'BP', 'A1', 'A2']][~ref['DUP']], on=['CHR', 'BP'], how='inner', suffixes=('', '_ref'))
+
+    df_variant_id = pd.concat([df_nodups, df_dups]).copy()
+    df_variant_id['VARIANT_ID']=df_variant_id['CHR'].astype(str)+':'+df_variant_id['BP'].astype(str)+':'+df_variant_id['A1_ref']+':'+df_variant_id['A2_ref']
+    df_variant_id.drop_duplicates(subset=['VARIANT_ID'], keep=False, inplace=True)
+    df_variant_id.drop_duplicates(subset=['index'], keep=False, inplace=True)
+
+    df = pd.merge(df, df_variant_id[['index', 'VARIANT_ID']], how='left', on='index')
+    df.drop(labels=['index'], axis=1, inplace=True)
+    df['VARIANT_ID'].fillna('.', inplace=True)
+
+    log.log("Merging complete, {n} out of {m} SNPs receive VARIANT_ID".format(n=(df['VARIANT_ID'] != '.').sum(), m=len(df)))
+
+    fix_columns_order(df).to_csv(args.out, index=False, header=True, sep='\t', na_rep='NA')
+    log.log("{n} SNPs saved to {f}".format(n=len(df), f=args.out))
+
+### =================================================================================
 ###                          Implementation for parser_lift
 ### =================================================================================
 def make_lift(args, log):
@@ -1182,6 +1244,8 @@ def make_lift(args, log):
 
     if (cols.CHR in df) and (cols.BP in df) and (cols.SNP not in df) and (snp_chrpos is not None):
         # Fix3 set SNP rs# based on SNPChrPosOnRef table based on CHR:POS
+        # It is a fairly rough guess about SNP rs#, because we do not take allele codes into account.
+        # Therefore it is important that this step applies only when SNP column is missing.
         df = pd.merge(df, snp_chrpos, how='left', left_on=[cols.CHR, cols.BP], right_on=['chr', 'pos'])
         df['snp_id'][df['snp_id'].isnull()] = -1
         df['snp_id'] = 'rs' + df['snp_id'].astype(int).astype(str)
@@ -1216,13 +1280,13 @@ def make_lift(args, log):
         log.log('Done, {} failed, {} unique, {} multi'.format(failed, unique, multi))
         fixes.append('{} markers receive new CHR:POS based on liftover chain files'.format(unique + multi))
 
-    if not args.keep_bad_snps:
-        if cols.SNP in df:
-            df_len = len(df)
-            df.dropna(subset=[cols.SNP], inplace=True)                  # Fix5 due to SNP being deleted from dbSNP
-            if len(df) < df_len:
-                fixes.append("{n} markers were dropped based on SNPHistory table and/or SNPChrPosOnRef table".format(n = df_len - len(df)))
+    if cols.SNP in df:
+        df[cols.SNP].fillna('.', inplace=True)
+        num_variants_without_rs_number = (df[cols.SNP]=='.').sum()
+        if num_variants_without_rs_number > 0:
+            log.log('{} variants have missing SNP rs#'.format(num_variants_without_rs_number))
 
+    if not args.keep_bad_snps:
         if (cols.CHR in df) and (cols.BP in df):
             df_len = len(df)
             df.dropna(subset=[cols.CHR, cols.BP], inplace=True)     # Fix6, due to failed liftover across genomic builds
