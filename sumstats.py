@@ -190,6 +190,16 @@ def parse_args(args):
         help="Size of chunk to read the file.")
     parser_zscore.set_defaults(func=make_zscore)
 
+    # 'beta' utility: calculate BETA column from OR and LOG_ODDS columns
+    parser_beta = subparsers.add_parser("beta", parents=[parent_parser],
+        help="Calculate BETA column from OR and LOG_ODDS columns")
+    parser_beta.add_argument("--sumstats", type=str, help="[REQUIRED] Raw input file with summary statistics. ")
+    parser_beta.add_argument("--out", type=str, default='-',
+        help="[required] File to output the result. "
+        "Default is '-', e.i. to write to sys.stdout (output pipe).")
+    parser_beta.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
+    parser_beta.set_defaults(func=make_beta)
+
     # 'mat' utility: load summary statistics into matlab format
     parser_mat = subparsers.add_parser("mat", parents=[parent_parser], help="Create mat files that can "
         "be used as an input for cond/conj FDR and for CM3 model. "
@@ -945,6 +955,34 @@ def make_zscore(args, log):
             n_snps += len(chunk)
             eprint("{f}: {n} lines processed".format(f=args.sumstats, n=(chunk_index+1)*args.chunksize))
     log.log("{n} SNPs saved to {f}".format(n=n_snps, f=args.out))
+
+### =================================================================================
+###                          Implementation for parser_beta
+### =================================================================================
+def make_beta(args, log):
+    """
+    Calculate beta column from OR or LOG_ODDS
+    """
+    if args.out == '-': args.out = sys.stdout
+    check_input_file(args.sumstats)
+    check_output_file(args.out, args.force)
+
+    log.log('Reading summary statistics file {}...'.format(args.sumstats))
+    df = pd.read_table(args.sumstats, sep='\t')
+    log.log('Done, {} markers found'.format(len(df)))
+
+    if 'BETA' in df:
+        log.log('WARNING: nothing to be done, BETA column is already present')
+    elif 'LOG_ODDS' in df:
+        df.rename(columns={'LOG_ODDS':'BETA'}, inplace=True)
+        log.log('Rename LOG_ODDS column to BETA')
+    elif 'OR' in df:
+        df['BETA'] = np.log(df['OR'].values)
+        df.drop(labels=['OR'], axis=1, inplace=True)
+        log.log('Calculate BETA=log(OR), and drop the OR column')
+
+    fix_columns_order(df).to_csv(args.out, index=False, header=True, sep='\t', na_rep='NA')
+    log.log("{n} SNPs saved to {f}".format(n=len(df), f=args.out))
 
 ### =================================================================================
 ###                          Implementation for parser_mat
