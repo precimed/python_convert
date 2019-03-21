@@ -190,9 +190,9 @@ def parse_args(args):
         help="Size of chunk to read the file.")
     parser_zscore.set_defaults(func=make_zscore)
 
-    # 'beta' utility: calculate BETA column from OR and LOG_ODDS columns
+    # 'beta' utility: calculate BETA column from OR and LOGODDS columns
     parser_beta = subparsers.add_parser("beta", parents=[parent_parser],
-        help="Calculate BETA column from OR and LOG_ODDS columns")
+        help="Calculate BETA column from OR and LOGODDS columns")
     parser_beta.add_argument("--sumstats", type=str, help="[REQUIRED] Raw input file with summary statistics. ")
     parser_beta.add_argument("--out", type=str, default='-',
         help="[required] File to output the result. "
@@ -961,7 +961,7 @@ def make_zscore(args, log):
 ### =================================================================================
 def make_beta(args, log):
     """
-    Calculate beta column from OR or LOG_ODDS
+    Calculate beta column from OR or LOGODDS
     """
     if args.out == '-': args.out = sys.stdout
     check_input_file(args.sumstats)
@@ -973,9 +973,9 @@ def make_beta(args, log):
 
     if 'BETA' in df:
         log.log('WARNING: nothing to be done, BETA column is already present')
-    elif 'LOG_ODDS' in df:
-        df.rename(columns={'LOG_ODDS':'BETA'}, inplace=True)
-        log.log('Rename LOG_ODDS column to BETA')
+    elif 'LOGODDS' in df:
+        df.rename(columns={'LOGODDS':'BETA'}, inplace=True)
+        log.log('Rename LOGODDS column to BETA')
     elif 'OR' in df:
         df['BETA'] = np.log(df['OR'].values)
         df.drop(labels=['OR'], axis=1, inplace=True)
