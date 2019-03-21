@@ -1189,7 +1189,7 @@ def make_variantid(args, log):
     if ('A1' in df) and ('A2' in df):
         df_dups = pd.merge(df[['index', 'CHR', 'BP', 'A1', 'A2']], ref[['CHR', 'BP', 'A1_ref', 'A2_ref']][ref['DUP']], on=['CHR', 'BP'], how='inner')
         df_dups = df_dups[[_is_alleles_match((row.A1, row.A2), (row.A1_ref, row.A2_ref)) for _, row in df_dups.iterrows()]].copy()
-        df.drop(labels=['A1', 'A2'], axis=1, inplace=True)
+        df_dups.drop(labels=['A1', 'A2'], axis=1, inplace=True)
         df_variant_id = pd.concat([df_nodups, df_dups]).copy()
     else:
         log.log("WARNING: sumstats file has no allele codes")
