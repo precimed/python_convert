@@ -311,9 +311,10 @@ if __name__ == "__main__":
     ax.fill_between(x_ci, lower_ci, upper_ci, color="0.8")
     ax.plot([0,x_ci[-1]], [0,x_ci[-1]], ls='--', lw=1, marker=' ', color="k")
     # plot all data
-    ax.plot(x, y, ls='-', lw=1, marker=' ', label="all variants", color='C0')
-    if args.top_as_dot > 0:
-        ax.plot(x_dot, y_dot, ls=' ', marker='.', ms=1, color='C0')
+    if df_strata is None:
+        ax.plot(x, y, ls='-', lw=1, marker=' ', label="all variants", color='C0')
+        if args.top_as_dot > 0:
+            ax.plot(x_dot, y_dot, ls=' ', marker='.', ms=1, color='C0')
 
     # plot strata
     if not df_strata is None:
@@ -321,7 +322,7 @@ if __name__ == "__main__":
             i = df_strata.index[df_strata[stratum_id]]
             x, y, x_dot, y_dot = get_xy_from_p(df_sumstats.loc[i,args.p],
                 args.top_as_dot, df_sumstats.loc[i,"weights"])
-            color = "C%d" % (j+1)
+            color = "C%d" % ((j%9)+1) 
             ax.plot(x, y, ls='-', lw=1, marker=' ', label=stratum_id, color=color)
             if args.top_as_dot > 0:
                 ax.plot(x_dot, y_dot, ls=' ', marker='.', ms=1, color=color)
