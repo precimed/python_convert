@@ -1353,11 +1353,15 @@ def touch(fname, times=None):
     with open(fname, 'a'):
         os.utime(fname, times)
 
+def tar_filter(tarinfo):
+    if os.path.basename(tarinfo.name).startswith('sumstats'): return None
+    return tarinfo
+
 def clump_cleanup(args, log):
     temp_out = args.out + '.temp'
     log.log('Saving intermediate files to {out}.temp.tar.gz'.format(out=args.out))
     with tarfile.open('{out}.temp.tar.gz'.format(out=args.out), "w:gz") as tar:
-        tar.add(temp_out, arcname=os.path.basename(temp_out), exclude=lambda filename : os.path.basename(filename).startswith('sumstats'))
+        tar.add(temp_out, arcname=os.path.basename(temp_out), filter=tar_filter)
     rmtree(temp_out)
 
 def make_clump(args, log):
