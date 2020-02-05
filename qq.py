@@ -7,7 +7,7 @@ import numpy as np
 import scipy.stats as sstats
 import argparse
 import pandas as pd
-
+import json
 
 # Examples:
 # python qq.py MSA_MSA_2016_lift_noMHC_correct_case_control.csv.gz --strata CTG_COG_2018.csv.gz --strata-num PVAL --top-as-dot 100 --weights weights.tld.txt.gz --out qq.msa_cog.top100.tld.png
@@ -258,6 +258,15 @@ def get_ci(p, p_weights, ci_alpha=0.05, nbins=200):
     x_ci = -np.log10(beta_a/len(p))
     return x_ci, lower_ci, upper_ci
 
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if callable(obj):
+            return str(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.float32):
+            return np.float64(obj)
+        return json.JSONEncoder.default(self, obj)
 
 
 if __name__ == "__main__":
@@ -305,30 +314,34 @@ if __name__ == "__main__":
     max_y_lim = max(y[-1],upper_ci[-1], 0 if args.top_as_dot==0 else y_dot[0])
 
     print("Making plot")
+    json_data = {}
     fig, ax = plt.subplots(figsize=(6,6), dpi=200)
 
     # plot null and ci
-    ax.fill_between(x_ci, lower_ci, upper_ci, color="0.8")
+    ax.fill_between(x_ci, lower_ci, upper_ci, color="0.8"); json_data['x_ci'] = x_ci; json_data['lower_ci'] = lower_ci; json_data['upper_ci'] = upper_ci
     ax.plot([0,x_ci[-1]], [0,x_ci[-1]], ls='--', lw=1, marker=' ', color="k")
     # plot all data
     if df_strata is None:
-        ax.plot(x, y, ls='-', lw=1, marker=' ', label="all variants", color='C0')
+        ax.plot(x, y, ls='-', lw=1, marker=' ', label="all variants", color='C0'); json_data['x'] = x; json_data['y'] = y
         if args.top_as_dot > 0:
-            ax.plot(x_dot, y_dot, ls=' ', marker='.', ms=1, color='C0')
+            ax.plot(x_dot, y_dot, ls=' ', marker='.', ms=1, color='C0'); json_data['x_dot'] = x_dot; json_data['y_dot'] = y_dot
 
     # plot strata
     if not df_strata is None:
+        json_data['stratum'] = []
         for j, stratum_id in enumerate(df_strata.columns):
             i = df_strata.index[df_strata[stratum_id]]
+            json_stratum = {'stratum_id':stratum_id, 'i':i}
             x, y, x_dot, y_dot = get_xy_from_p(df_sumstats.loc[i,args.p],
                 args.top_as_dot, df_sumstats.loc[i,"weights"])
-            color = "C%d" % ((j%9)+1) 
-            ax.plot(x, y, ls='-', lw=1, marker=' ', label=stratum_id, color=color)
+            color = "C%d" % ((j%9)+1); json_stratum['color'] = color
+            ax.plot(x, y, ls='-', lw=1, marker=' ', label=stratum_id, color=color); json_stratum['x'] = x; json_stratum['y'] = y
             if args.top_as_dot > 0:
-                ax.plot(x_dot, y_dot, ls=' ', marker='.', ms=1, color=color)
+                ax.plot(x_dot, y_dot, ls=' ', marker='.', ms=1, color=color); json_stratum['x_dot'] = x_dot; json_stratum['y_dot'] = y_dot
             # update upper limits if needed
             max_x_lim = max(max_x_lim, x[-1], 0 if args.top_as_dot==0 else x_dot[0])
             max_y_lim = max(max_y_lim, y[-1], 0 if args.top_as_dot==0 else y_dot[0])
+            json_data['stratum'].append(json_stratum)
 
     ax.set_xlabel(r"expected $\mathrm{-log_{10}(P)}$")
     ax.set_ylabel(r"observed $\mathrm{-log_{10}(P)}$")
@@ -345,7 +358,7 @@ if __name__ == "__main__":
     if args.strata != "NA":
         strata = os.path.splitext(os.path.basename(args.strata))[0]
         title = "%s | %s" % (title, strata)
-    ax.set_title(title, fontsize='small')
+    ax.set_title(title, fontsize='small'); json_data['title'] = title
 
     ax.legend(loc='upper left', fontsize="small")
 
@@ -363,3 +376,9 @@ if __name__ == "__main__":
 
     plt.savefig(args.out)
     print("%s was generated" % args.out)
+
+    with open(args.out + '.json', 'w') as outfile:  
+        json.dump(results, outfile, cls=NumpyEncoder)    
+    print("%s.json was generated" % args.out)
+
+    print("Done.")
