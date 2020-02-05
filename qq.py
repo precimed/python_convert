@@ -264,6 +264,8 @@ class NumpyEncoder(json.JSONEncoder):
             return str(obj)
         if isinstance(obj, np.ndarray):
             return obj.tolist()
+        if isinstance(obj, pd.Series) or isinstance(obj, pd.Index):
+            return obj.values.tolist()
         if isinstance(obj, np.float32):
             return np.float64(obj)
         return json.JSONEncoder.default(self, obj)
@@ -331,7 +333,7 @@ if __name__ == "__main__":
         json_data['stratum'] = []
         for j, stratum_id in enumerate(df_strata.columns):
             i = df_strata.index[df_strata[stratum_id]]
-            json_stratum = {'stratum_id':stratum_id, 'i':i}
+            json_stratum = {'stratum_id':stratum_id}
             x, y, x_dot, y_dot = get_xy_from_p(df_sumstats.loc[i,args.p],
                 args.top_as_dot, df_sumstats.loc[i,"weights"])
             color = "C%d" % ((j%9)+1); json_stratum['color'] = color
