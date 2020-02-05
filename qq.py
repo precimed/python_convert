@@ -378,7 +378,7 @@ if __name__ == "__main__":
     print("%s was generated" % args.out)
 
     with open(args.out + '.json', 'w') as outfile:  
-        json.dump(results, outfile, cls=NumpyEncoder)    
+        json.dump(json_data, outfile, cls=NumpyEncoder)    
     print("%s.json was generated" % args.out)
 
     print("Done.")
