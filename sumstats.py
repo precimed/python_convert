@@ -2055,7 +2055,7 @@ class Logger(object):
 
         # remove error file from previous run if it exists
         try:
-            os.remove(fh + '.error')
+            if fh is not None: os.remove(fh + '.error')
         except OSError:
             pass
 
@@ -2156,8 +2156,7 @@ if __name__ == "__main__":
         args.func(args, log)
 
     except Exception:
-        ex_type, ex, tb = sys.exc_info()
-        log.error( traceback.format_exc(ex) )
+        log.error( traceback.format_exc() )
         raise
 
     finally:
