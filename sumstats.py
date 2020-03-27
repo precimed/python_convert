@@ -1523,6 +1523,8 @@ def make_clump(args, log):
     df_loci.rename(columns={'CHR_A':'CHR'})[['locusnum', 'CHR', 'LEAD_SNP', 'LEAD_BP', 'MinBP', 'MaxBP', args.clump_field]].to_csv('{}.loci.csv'.format(args.out), sep='\t', index=False)
     log.log('{} loci reported to {}.loci.csv'.format(len(df_loci), args.out))
 
+    if 'BP' in df_cand: del df_cand['BP']
+    if 'CHR' in df_cand: del df_cand['CHR']
     df_cand = pd.merge(df_cand, df_lead[['LEAD_SNP', 'locusnum']], how='left', on='LEAD_SNP')
     cols = list(df_cand); cols.insert(0, cols.pop(cols.index('locusnum')))
     df_cand = df_cand[cols].drop(['CHR_B'], axis=1).rename(columns={'CHR_A':'CHR', 'BP_A':'INDEP_BP', 'SNP_A':'INDEP_SNP', 'BP_B':'CAND_BP', 'SNP_B':'CAND_SNP'}).copy()
