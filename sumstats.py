@@ -190,6 +190,18 @@ def parse_args(args):
         help="Size of chunk to read the file.")
     parser_zscore.set_defaults(func=make_zscore)
 
+    # 'pvalue' utility: calculate p-value column from 'z'' or 'beta'/'se' columns
+    parser_pvalue = subparsers.add_parser("pvalue", parents=[parent_parser],
+        help="Calculate p-value column from 'z'' or 'beta'/'se' columns")
+    parser_pvalue.add_argument("--sumstats", type=str, help="[REQUIRED] Raw input file with summary statistics. ")
+    parser_pvalue.add_argument("--out", type=str, default='-',
+        help="[required] File to output the result. "
+        "Default is '-', e.i. to write to sys.stdout (output pipe).")
+    parser_pvalue.add_argument("--force", action="store_true", default=False, help="Allow sumstats.py to overwrite output file if it exists.")
+    parser_pvalue.add_argument("--chunksize", default=100000, type=int,
+        help="Size of chunk to read the file.")
+    parser_pvalue.set_defaults(func=make_pvalue)
+
     # 'beta' utility: calculate BETA column from OR and LOGODDS columns
     parser_beta = subparsers.add_parser("beta", parents=[parent_parser],
         help="Calculate BETA column from OR and LOGODDS columns")
@@ -951,6 +963,42 @@ def make_zscore(args, log):
                 effect_sign[effect_sign == 0] = 1
             chunk[cols.PVAL] = pd.to_numeric(chunk[cols.PVAL], errors='coerce')
             chunk[cols.Z] = -stats.norm.ppf(chunk[cols.PVAL].values*0.5)*effect_sign.astype(np.float64)
+            chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA')
+            n_snps += len(chunk)
+            eprint("{f}: {n} lines processed".format(f=args.sumstats, n=(chunk_index+1)*args.chunksize))
+    log.log("{n} SNPs saved to {f}".format(n=n_snps, f=args.out))
+
+
+### =================================================================================
+###                          Implementation for parser_pvalue
+### =================================================================================
+def make_pvalue(args, log):
+    """
+    Calculate p-value column from 'z'' or 'beta'/'se' columns
+    """
+    if args.out == '-': args.out = sys.stdout
+    check_input_file(args.sumstats)
+    check_output_file(args.out, args.force)
+
+    columns = list(pd.read_table(args.sumstats, sep='\t', nrows=0).columns)
+    log.log('Columns in {}: {}'.format(args.sumstats, columns))
+
+    if 'PVAL' in columns:
+        log.log('PVAL already exists, nothing to be done.')
+        return
+    if ('Z' not in columns) and (('BETA' not in columns) or ('SE' not in column)):
+        raise(ValueError("Neither Z nor BETA/SE are available in the input summary stats file"))
+
+    log.log('Reading summary statistics file {}...'.format(args.sumstats))
+    reader = pd.read_table(args.sumstats, sep='\t', chunksize=args.chunksize)
+    n_snps = 0
+    with (open(args.out, 'a') if args.out != sys.stdout else sys.stdout) as out_f:
+        for chunk_index, chunk in enumerate(reader):
+            if chunk_index==0: log.log('Column types: ' + ', '.join([column + ':' + str(dtype) for (column, dtype) in zip(chunk.columns, chunk.dtypes)]))
+            if 'Z' in columns:
+                chunk[cols.PVAL] = scipy.stats.norm.sf(abs(chunk['Z'].values))*2
+            elif ('BETA'in columns) and ('SE' in columns):
+                chunk[cols.PVAL] = scipy.stats.norm.sf(abs(np.divide(chunk['BETA'].values, chunk['SE'].values)))*2
             chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA')
             n_snps += len(chunk)
             eprint("{f}: {n} lines processed".format(f=args.sumstats, n=(chunk_index+1)*args.chunksize))
