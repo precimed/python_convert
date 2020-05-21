@@ -68,6 +68,7 @@ default_cnames = {
     'SNP': cols.SNP,
     'MARKERNAME': cols.SNP,
     'SNPID': cols.SNP,
+    'SNP_ID': cols.SNP,  
     'RS': cols.SNP,
     'RSID': cols.SNP,
     'RS_NUMBER': cols.SNP,
@@ -112,6 +113,7 @@ default_cnames = {
     'NEA': cols.A2,
     # N
     'N': cols.N,
+    'SAMPLESIZE': cols.N,  
     'NCASE': cols.NCASE,
     'CASES_N': cols.NCASE,
     'N_CASE': cols.NCASE,
