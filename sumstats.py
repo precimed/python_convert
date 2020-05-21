@@ -665,6 +665,12 @@ def make_csv(args, log):
                 chunk[cols.CHR], chunk[cols.BP], chunk[cols.A1], chunk[cols.A2] = chunk[cols.CHRPOSA1A2].str.replace('_', ':').str.split(':', 3).str
                 chunk.drop(cols.CHRPOSA1A2, axis=1, inplace=True)
 
+            # Validate that EA has the same values as A1, and drop EA:
+            if cols.EA in chunk.columns:
+                if np.any(chunks[cols.EA] != chunks[cols.A1]):
+                    raise('EA column does not match A1 column, unable to read summary stats')
+                chunk.drop(cols.EA, axis=1, inplace=True)
+
             # Ensure standard labels in CHR column
             if cols.CHR in chunk.columns:
                 chunk[cols.CHR].fillna(-9, inplace=True)

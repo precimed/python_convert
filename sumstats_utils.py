@@ -51,9 +51,9 @@ def align_alleles(z, alleles):
         raise KeyError('Incompatible alleles. ')
     return z
 
-Cols = namedtuple('Cols', ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'N', 'NCASE', 'NCONTROL', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2', 'CHRPOSA1A2', 'DIRECTION'])
-cols = Cols._make(        ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'N', 'NCASE', 'NCONTROL', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2', 'CHRPOSA1A2', 'DIRECTION'])
-cols_type_map =           {'SNP':str, 'CHR':int, 'BP':int, 'PVAL':np.float64, 'A1':str, 'A2':str, 'N':int, 'NCASE':int, 'NCONTROL':int, 'Z':float, 'OR':float, 'BETA':float,
+Cols = namedtuple('Cols', ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'EA', 'N', 'NCASE', 'NCONTROL', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2', 'CHRPOSA1A2', 'DIRECTION'])
+cols = Cols._make(        ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'EA', 'N', 'NCASE', 'NCONTROL', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2', 'CHRPOSA1A2', 'DIRECTION'])
+cols_type_map =           {'SNP':str, 'CHR':int, 'BP':int, 'PVAL':np.float64, 'A1':str, 'A2':str, 'EA':str, 'N':int, 'NCASE':int, 'NCONTROL':int, 'Z':float, 'OR':float, 'BETA':float,
                            'LOGODDS':float, 'SE':float, 'INFO':float, 'FRQ':float, 'NSTUDY':int, 'CHRPOS':str, 'A1A2':str, 'CHRPOSA1A2':str, 'DIRECTION':str }
 null_values = {
     cols.LOGODDS: 0,
@@ -162,6 +162,7 @@ describe_cname = {
     cols.PVAL: 'p-Value',
     cols.A1: 'Allele 1, interpreted as ref allele for signed sumstat.',
     cols.A2: 'Allele 2, interpreted as non-ref allele for signed sumstat.',
+    cols.EA: 'Effect Allele, interpreted as ref allele for signed sumstat (specific to MVP data to validate that A1 is the same as EA).',
     cols.N: 'Sample size',
     cols.NCASE: 'Number of cases',
     cols.NCONTROL: 'Number of controls',
