@@ -667,7 +667,7 @@ def make_csv(args, log):
 
             # Validate that EA has the same values as A1, and drop EA:
             if cols.EA in chunk.columns:
-                if np.any(chunks[cols.EA] != chunks[cols.A1]):
+                if np.any(chunk[cols.EA] != chunk[cols.A1]):
                     raise('EA column does not match A1 column, unable to read summary stats')
                 chunk.drop(cols.EA, axis=1, inplace=True)
 
