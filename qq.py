@@ -136,7 +136,7 @@ def read_sumstats(sumstats_f, sep, snpid_col, pval_col):
     """
     print("Reading %s" % sumstats_f)
     cols2use = [snpid_col, pval_col]
-    df = pd.read_table(sumstats_f, usecols=cols2use, index_col=snpid_col,
+    df = pd.read_csv(sumstats_f, usecols=cols2use, index_col=snpid_col,
         sep=sep)
     print("%d SNPs in %s" % (len(df), sumstats_f))
     df = df.loc[np.isfinite(df[pval_col]),:]
@@ -150,7 +150,7 @@ def read_sumstats(sumstats_f, sep, snpid_col, pval_col):
 def read_strata_cat(strata_f, sep, snpid_col, strata_cat_col, strata_cat_ids):
     print("Reading strata file %s" % strata_f)
     cols2use = [snpid_col, strata_cat_col]
-    df = pd.read_table(strata_f, usecols=cols2use, index_col=snpid_col, sep=sep,
+    df = pd.read_csv(strata_f, usecols=cols2use, index_col=snpid_col, sep=sep,
         dtype={strata_cat_col:str})
     # make a standard name for variant strata column
     if strata_cat_ids == "NA":
@@ -172,7 +172,7 @@ def read_strata_cat(strata_f, sep, snpid_col, strata_cat_col, strata_cat_ids):
 def read_strata_num(strata_f, sep, snpid_col, strata_num_col, strata_num_intervals):
     print("Reading strata file %s" % strata_f)
     cols2use = [snpid_col, strata_num_col]
-    df = pd.read_table(strata_f, usecols=cols2use, index_col=snpid_col, sep=sep,
+    df = pd.read_csv(strata_f, usecols=cols2use, index_col=snpid_col, sep=sep,
         dtype={strata_num_col:float})
     for name, (start, end) in strata_num_intervals.items():
         stratum_i = (start<df[strata_num_col]) & (df[strata_num_col]<end)
@@ -188,7 +188,7 @@ def read_strata_num(strata_f, sep, snpid_col, strata_num_col, strata_num_interva
 def read_strata_bin(strata_f, sep, snpid_col, strata_bin):
     print("Reading strata file %s" % strata_f)
     cols2use = [snpid_col] + strata_bin
-    df = pd.read_table(strata_f, usecols=cols2use, index_col=snpid_col, sep=sep,
+    df = pd.read_csv(strata_f, usecols=cols2use, index_col=snpid_col, sep=sep,
         dtype=dict.fromkeys(strata_bin, bool))
     df = df.loc[df.any(axis=1)]
     assert len(df) > 0, "All strata are empty"    
@@ -198,7 +198,7 @@ def read_strata_bin(strata_f, sep, snpid_col, strata_bin):
 
 def read_weights(weights_f):
     print("Reading weights file %s" % weights_f)
-    df = pd.read_table(weights_f, sep='\t', header=None, names=["snp", "w"],
+    df = pd.read_csv(weights_f, sep='\t', header=None, names=["snp", "w"],
         index_col="snp")
     # drop zero weights
     df = df.loc[df.w>0,:]

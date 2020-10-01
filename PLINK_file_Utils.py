@@ -28,7 +28,7 @@ def read_bim(bimFile, logger=None, sep='\t'):
     if not os.access(bimFile, os.R_OK):
         logger.error('Unable to read {}'.format(bimFile))
         raise (ValueError, 'Unable to read {}'.format(bimFile))
-    bimDat = pd.read_table(bimFile, sep=sep, header=None, 
+    bimDat = pd.read_csv(bimFile, sep=sep, header=None, 
             names=['CHR', 'SNP', 'GP', 'POS', 'A1', 'A2'])
     bimDat.loc[:,'CHR'] = bimDat.loc[:, 'CHR'].astype('|S5')
     bimDat.loc[bimDat.loc[:, 'CHR']=='X', 'CHR'] = '23'

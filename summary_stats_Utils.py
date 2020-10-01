@@ -53,15 +53,15 @@ def read_sumdata(sumFile, snpCol, pCol, kargs):
         raise ValueError, 'Unable to read summary file: %s' % (sumFile)
     try:
         if 'sep' in kargs:
-            sumDat = pd.read_table(sumFile,sep=kargs['sep'],
+            sumDat = pd.read_csv(sumFile,sep=kargs['sep'],
                     na_values=[' ', '#N/A','\N','N/A','NA','NULL','NaN', 'nan'])
         else:
-            sumDat = pd.read_table(sumFile)
+            sumDat = pd.read_csv(sumFile)
         if sumDat.shape[1] <3: 
-            sumDat = pd.read_table(sumFile, sep=' *',
+            sumDat = pd.read_csv(sumFile, sep=' *',
                     na_values=[' ','#N/A','\N','N/A','NA','NULL','NaN', 'nan'])
             if sumDat.shape[1] < 3:
-                sumDat = pd.read_table(sumFile, sep='[ +|\t]', engine='python',
+                sumDat = pd.read_csv(sumFile, sep='[ +|\t]', engine='python',
                     na_values=[' ', '#N/A','\N','N/A','NA','NULL','NaN', 'nan'])
                 if sumDat.shape[1] < 3:
                     raise (ValueError, 

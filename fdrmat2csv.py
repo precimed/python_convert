@@ -11,7 +11,7 @@ if __name__ == '__main__':
     print('Load {}'.format(matfile))
     sumstats = sio.loadmat(matfile)
     print('Load {}'.format(reffile))
-    ref=pd.read_table(reffile, delim_whitespace=True)
+    ref=pd.read_csv(reffile, delim_whitespace=True)
     ref['FDR']=sumstats['fdrmat']
     print('Write {}'.format(matfile + '.csv'))
     ref[['CHR', 'SNP', 'BP', 'A1', 'A2', 'FDR']].to_csv(matfile + '.csv', index=False, sep='\t')

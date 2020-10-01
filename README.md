@@ -143,7 +143,7 @@ import sys
 import numpy as np
 if __name__ == '__main__':
     sumstats = sio.loadmat(sys.argv[1])
-    ref=pd.read_table(ys.argv[2], delim_whitespace=True)
+    ref=pd.read_csv(ys.argv[2], delim_whitespace=True)
     ref['FDR']=sumstats['fdrmat']
     ref[['CHR', 'SNP', 'BP', 'A1', 'A2', 'FDR']].to_csv(sys.argv[1] + '.csv', index=False, sep='\t')
 ```

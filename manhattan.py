@@ -165,14 +165,14 @@ def get_snp_ids(fname):
     if fname == "NA":
         return np.array([])
     else:
-        return pd.read_table(fname,header=None,squeeze=True).values
+        return pd.read_csv(fname,header=None,squeeze=True).values
 
 
 def get_lead(fname):
     if (fname == "NA") or (os.stat(fname).st_size == 0):
         return np.array([])
     else:
-        df = pd.read_table(fname)
+        df = pd.read_csv(fname)
         return df.loc[df.is_locus_lead,"LEAD_SNP"].values
 
 
@@ -180,7 +180,7 @@ def get_indep_sig(fname):
     if (fname == "NA") or (os.stat(fname).st_size == 0):
         return np.array([])
     else:
-        df = pd.read_table(fname)
+        df = pd.read_csv(fname)
         return df["INDEP_SNP"].values
 
 
@@ -192,7 +192,7 @@ def get_annot(fname):
     if fname == "NA":
         return pd.Series([])
     else:
-        series = pd.read_table(fname,header=None,names=["snp", "label"],
+        series = pd.read_csv(fname,header=None,names=["snp", "label"],
             index_col="snp",squeeze=True)
         return series
 
@@ -213,7 +213,7 @@ def filter_sumstats(sumstats_f, sep, snpid_col, pval_col, chr_col, bp_col, chr2u
     """
     print("Filtering %s" % sumstats_f)
     cols2use = [snpid_col, pval_col, chr_col, bp_col]
-    df = pd.read_table(sumstats_f, usecols=cols2use, sep=sep,
+    df = pd.read_csv(sumstats_f, usecols=cols2use, sep=sep,
         dtype={chr_col:str})
     print("%d SNPs in %s" % (len(df), sumstats_f))
     df = df.loc[~df[snpid_col].isnull(), :].set_index(snpid_col)

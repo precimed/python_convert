@@ -108,7 +108,7 @@ def annotate(arg):
 
 def make_annotation_from_biomart(biomart_file, bim_file, out_txt, out_mat,
     test_run, test_n_snps, n_proc):
-    mart_df = pd.read_table(biomart_file, usecols=list(required_biomart_cols))
+    mart_df = pd.read_csv(biomart_file, usecols=list(required_biomart_cols))
     mart_df.columns = [required_biomart_cols[c] for c in mart_df.columns]
     print("%d exones in the input file" % len(mart_df))
 
@@ -123,7 +123,7 @@ def make_annotation_from_biomart(biomart_file, bim_file, out_txt, out_mat,
     mart_df["downstream_1kb"] = mart_df.transcript_end + 1000
 
     #WARN: hardcoded CHR column
-    snp_df = pd.read_table(bim_file, usecols=list(required_bim_cols),
+    snp_df = pd.read_csv(bim_file, usecols=list(required_bim_cols),
         dtype={"CHR":str})
     snp_df.columns = [required_bim_cols[c] for c in snp_df.columns]
     print("%d snps in bim file" % len(snp_df))

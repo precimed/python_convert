@@ -119,7 +119,7 @@ def read_ref_dat(refFile, logger):
     if not os.access(refFile, os.R_OK):
         raise ValueError("Can't read reference file: {}".format(refFile))
     logger.info('*** Loading reference data ***')
-    refDat = pd.read_table(refFile)
+    refDat = pd.read_csv(refFile)
     refDat.rename(columns={'BP':'POS', 'A1':'refA1', 'A2':'refA2'}, 
             inplace=True)
     logger.info('Read reference data from {}'.format(refFile))

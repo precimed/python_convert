@@ -77,7 +77,7 @@ def parse_args(args):
     parser_csv.add_argument("--skip-validation", action="store_true", default=False,
         help="Skip validation of the resulting csv file")
     parser_csv.add_argument("--sep", default='\s+', type=str, choices=[',', ';', '\t', ' '],
-        help="Delimiter to use (',' ';' $' ' or $'\\t'). By default uses delim_whitespace option in pandas.read_table.")
+        help="Delimiter to use (',' ';' $' ' or $'\\t'). By default uses delim_whitespace option in pandas.read_csv.")
     parser_csv.add_argument("--na-values", type=str, nargs='+',
         help="Additional strings to recognize as NA/NaN.")
     parser_csv.add_argument("--all-snp-info-23-and-me", default=None, type=str,
@@ -594,10 +594,10 @@ def make_csv(args, log):
         for line in header: log.log(line)
 
     if args.header is None:
-        reader = pd.read_table(args.sumstats, dtype=str, sep=args.sep, chunksize=args.chunksize, na_values=args.na_values)
+        reader = pd.read_csv(args.sumstats, dtype=str, sep=args.sep, chunksize=args.chunksize, na_values=args.na_values)
     else:
-        reader = pd.read_table(args.sumstats, dtype=str, sep=args.sep, chunksize=args.chunksize, na_values=args.na_values, header=None, names=args.header.split())
-    reader_23_and_me = pd.read_table(args.all_snp_info_23_and_me, dtype=str, sep=args.sep, chunksize=args.chunksize) if args.all_snp_info_23_and_me else None
+        reader = pd.read_csv(args.sumstats, dtype=str, sep=args.sep, chunksize=args.chunksize, na_values=args.na_values, header=None, names=args.header.split())
+    reader_23_and_me = pd.read_csv(args.all_snp_info_23_and_me, dtype=str, sep=args.sep, chunksize=args.chunksize) if args.all_snp_info_23_and_me else None
     n_snps = 0
     max_n_val = np.nan; max_ncase_val = np.nan; max_ncontrol_val = np.nan
     with (open(args.out, 'a') if args.out != sys.stdout else sys.stdout) as out_f:
@@ -708,7 +708,7 @@ def make_csv(args, log):
 
     if (not args.skip_validation) and (args.out != sys.stdout):
         log.log('Validate the resulting file...')
-        reader = pd.read_table(args.out, sep='\t', chunksize=args.chunksize)
+        reader = pd.read_csv(args.out, sep='\t', chunksize=args.chunksize)
         n_snps = 0
         for chunk_index, chunk in enumerate(reader):
             if chunk_index==0:
@@ -758,7 +758,7 @@ def make_qc(args, log):
 
     # Read summary sumstats file...
     log.log('Reading sumstats file {}...'.format(args.sumstats))
-    sumstats = pd.read_table(args.sumstats, sep='\t', dtype=str)
+    sumstats = pd.read_csv(args.sumstats, sep='\t', dtype=str)
     exclude_ranges = make_ranges(args.exclude_ranges, log)
     log.log("Sumstats file contains {d} markers.".format(d=len(sumstats)))
 
@@ -922,7 +922,7 @@ def make_zscore(args, log):
     check_input_file(args.sumstats)
     check_output_file(args.out, args.force)
 
-    columns = list(pd.read_table(args.sumstats, sep='\t', nrows=0).columns)
+    columns = list(pd.read_csv(args.sumstats, sep='\t', nrows=0).columns)
     log.log('Columns in {}: {}'.format(args.sumstats, columns))
 
     if (args.effect is None) and (not args.a1_inc):
@@ -948,7 +948,7 @@ def make_zscore(args, log):
         effect_col_dtype_map = {args.effect: (str if signed_effect else np.float)}
 
     log.log('Reading summary statistics file {}...'.format(args.sumstats))
-    reader = pd.read_table(args.sumstats, sep='\t', chunksize=args.chunksize,
+    reader = pd.read_csv(args.sumstats, sep='\t', chunksize=args.chunksize,
         dtype=effect_col_dtype_map, float_precision='high')
     n_snps = 0
     with (open(args.out, 'a') if args.out != sys.stdout else sys.stdout) as out_f:
@@ -986,7 +986,7 @@ def make_pvalue(args, log):
     check_input_file(args.sumstats)
     check_output_file(args.out, args.force)
 
-    columns = list(pd.read_table(args.sumstats, sep='\t', nrows=0).columns)
+    columns = list(pd.read_csv(args.sumstats, sep='\t', nrows=0).columns)
     log.log('Columns in {}: {}'.format(args.sumstats, columns))
 
     if 'PVAL' in columns:
@@ -996,7 +996,7 @@ def make_pvalue(args, log):
         raise(ValueError("Neither Z nor BETA/SE are available in the input summary stats file"))
 
     log.log('Reading summary statistics file {}...'.format(args.sumstats))
-    reader = pd.read_table(args.sumstats, sep='\t', chunksize=args.chunksize)
+    reader = pd.read_csv(args.sumstats, sep='\t', chunksize=args.chunksize)
     n_snps = 0
     with (open(args.out, 'a') if args.out != sys.stdout else sys.stdout) as out_f:
         for chunk_index, chunk in enumerate(reader):
@@ -1022,7 +1022,7 @@ def make_beta(args, log):
     check_output_file(args.out, args.force)
 
     log.log('Reading summary statistics file {}...'.format(args.sumstats))
-    df = pd.read_table(args.sumstats, sep='\t')
+    df = pd.read_csv(args.sumstats, sep='\t')
     log.log('Done, {} markers found'.format(len(df)))
 
     if 'BETA' in df:
@@ -1073,9 +1073,9 @@ def make_mat(args, log):
     if args.ignore_alleles:
         log.log('Ignore A1/A2 alleles from the input files')
         log.log('Reading reference file {}...'.format(args.ref))
-        df_ref = pd.read_table(args.ref, sep='\t', usecols=[cols.SNP])
+        df_ref = pd.read_csv(args.ref, sep='\t', usecols=[cols.SNP])
         log.log('Reading summary statistics file {}...'.format(args.sumstats))
-        df_sumstats = pd.read_table(args.sumstats, sep='\t', float_precision='high', usecols=[cols.SNP, cols.PVAL])
+        df_sumstats = pd.read_csv(args.sumstats, sep='\t', float_precision='high', usecols=[cols.SNP, cols.PVAL])
         log.log('Merging with reference file...')
         df_sumstats.drop_duplicates(subset=[cols.SNP], keep='first', inplace=True)
         df_result = pd.merge(df_ref, df_sumstats, how='left', on='SNP')
@@ -1086,7 +1086,7 @@ def make_mat(args, log):
         log.log("%s created" % args.out)
         return
 
-    reader = pd.read_table(args.sumstats, sep='\t', chunksize=args.chunksize, float_precision='high')
+    reader = pd.read_csv(args.sumstats, sep='\t', chunksize=args.chunksize, float_precision='high')
     df_out = None
     for chunk_index, ss_chunk in enumerate(reader):
         # (BEGIN) special handling of the first chunk
@@ -1130,7 +1130,7 @@ def make_mat(args, log):
 
             log.log('Reading reference file {}...'.format(args.ref))
             usecols = [cols.SNP, cols.A1, cols.A2]
-            ref_reader = pd.read_table(args.ref, sep='\t', usecols=usecols,
+            ref_reader = pd.read_csv(args.ref, sep='\t', usecols=usecols,
                 chunksize=args.chunksize)
             ref_dict = {}
             for ref_chunk in ref_reader:
@@ -1142,7 +1142,7 @@ def make_mat(args, log):
             ref_dict = {i: (variant, _reverse_complement_variant(variant),
                             variant[::-1], _reverse_complement_variant(variant[::-1]))
                         for i, variant in ref_dict.items()}
-            ref_snps = pd.read_table(args.ref, sep='\t', usecols=[cols.SNP], squeeze=True)
+            ref_snps = pd.read_csv(args.ref, sep='\t', usecols=[cols.SNP], squeeze=True)
             #TODO?: add check whether ref_snps contains duplicates
             log.log("Reference dict contains {d} snps.".format(d=len(ref_dict)))
 
@@ -1226,11 +1226,11 @@ def make_variantid(args, log):
     check_output_file(args.out, args.force)
 
     log.log('Reading summary statistics file {}...'.format(args.sumstats))
-    df = pd.read_table(args.sumstats, sep='\t')
+    df = pd.read_csv(args.sumstats, sep='\t')
     log.log('Done, {} markers found'.format(len(df)))
 
     log.log('Reading reference file {}...'.format(args.ref))
-    ref = pd.read_table(args.ref, sep='\t', usecols=[cols.CHR, cols.BP, cols.A1, cols.A2])
+    ref = pd.read_csv(args.ref, sep='\t', usecols=[cols.CHR, cols.BP, cols.A1, cols.A2])
     ref.rename(columns={'A1': 'A1_ref', 'A2': 'A2_ref'}, inplace=True)
     log.log("Reference dict contains {d} snps.".format(d=len(ref)))
 
@@ -1286,7 +1286,7 @@ def make_lift(args, log):
         raise(ValueError('--snp-history and --rs-merge-arch must be used together'))
 
     log.log('Reading summary statistics file {}...'.format(args.sumstats))
-    df = pd.read_table(args.sumstats, sep='\t')
+    df = pd.read_csv(args.sumstats, sep='\t')
     log.log('Done, {} markers found'.format(len(df)))
 
     lift_bp = None; lift_rs = None; snp_chrpos = None
@@ -1300,7 +1300,7 @@ def make_lift(args, log):
 
     if args.snp_chrpos is not None:
         log.log('Reading {}...'.format(args.snp_chrpos))
-        snp_chrpos = pd.read_table(args.snp_chrpos, sep='\t', header=None, usecols=[0,1,2])
+        snp_chrpos = pd.read_csv(args.snp_chrpos, sep='\t', header=None, usecols=[0,1,2])
         snp_chrpos.columns=['snp_id','chr','pos'] #,'orien','neighbor_snp_list','isPAR']
         snp_chrpos.dropna(subset=['pos'],inplace=True)           # drop NA positions
         snp_chrpos['pos']=snp_chrpos['pos'].astype(np.int) + 1   # convert to integer unity-based positions
@@ -1452,7 +1452,7 @@ def make_clump(args, log):
     if args.sumstats:
         check_input_file(args.sumstats)
         log.log('Reading {}...'.format(args.sumstats))
-        df_sumstats = pd.read_table(args.sumstats, delim_whitespace=True)
+        df_sumstats = pd.read_csv(args.sumstats, delim_whitespace=True)
         log.log('Read {} SNPs from --sumstats file'.format(len(df_sumstats)))
         validate_columns(df_sumstats)
         for chri, df_chr_file in zip(args.chr_labels, args.sumstats_chr):
@@ -1461,7 +1461,7 @@ def make_clump(args, log):
         for df_chr_file in args.sumstats_chr:
             check_input_file(df_chr_file)
         log.log('Reading {}...'.format(args.sumstats_chr))
-        df_sumstats = pd.concat([pd.read_table(df_chr_file, delim_whitespace=True) for df_chr_file in args.sumstats_chr])
+        df_sumstats = pd.concat([pd.read_csv(df_chr_file, delim_whitespace=True) for df_chr_file in args.sumstats_chr])
         log.log('Read {} SNPs'.format(len(df_sumstats)))
 
     for chri, df_chr_file in zip(reversed(args.chr_labels), reversed(args.sumstats_chr)):
@@ -1492,7 +1492,7 @@ def make_clump(args, log):
             log)
 
         # Step 3 - find loci around independent significant SNPs
-        pd.read_table('{}/indep.chr{}.clumped'.format(temp_out, chri), delim_whitespace=True)['SNP'].to_csv('{}/indep.chr{}.clumped.snps'.format(temp_out, chri), index=False, header=False)
+        pd.read_csv('{}/indep.chr{}.clumped'.format(temp_out, chri), delim_whitespace=True)['SNP'].to_csv('{}/indep.chr{}.clumped.snps'.format(temp_out, chri), index=False, header=False)
         execute_command(
             "{} ".format(args.plink) + 
             "--bfile {} ".format(sub_chr(args.bfile_chr, chri)) +
@@ -1511,7 +1511,7 @@ def make_clump(args, log):
 
     lead_to_indep = []
     for file in files:
-        df=pd.read_table(file,delim_whitespace=True)
+        df=pd.read_csv(file,delim_whitespace=True)
         lead_to_indep.append(pd.concat([pd.DataFrame(data=[(lead, indep_snp.split('(')[0]) for indep_snp in indep_snps.split(',') if indep_snp != 'NONE'] + [(lead, lead)], columns=['LEAD', 'INDEP']) for lead, indep_snps in zip(df['SNP'].values, df['SP2'].values)]))
     lead_to_indep = pd.concat(lead_to_indep).reset_index(drop=True)
     if lead_to_indep.duplicated(subset=['INDEP'], keep=False).any():
@@ -1526,7 +1526,7 @@ def make_clump(args, log):
     files = ["{out}/indep.chr{chri}.ld".format(out=temp_out, chri=chri) for chri in args.chr_labels]
     files = [file for file in files if os.path.isfile(file)]
     if not files: raise ValueError('No .ld files found')
-    df_cand=pd.concat([pd.read_table(file, delim_whitespace=True) for file in files])
+    df_cand=pd.concat([pd.read_csv(file, delim_whitespace=True) for file in files])
     df_cand=pd.merge(df_cand, lead_to_indep.rename(columns={'INDEP':'SNP_A', 'LEAD':'LEAD_SNP'}), how='left', on='SNP_A')
     df_sumstats.drop_duplicates(subset=args.clump_snp_field, inplace=True)
     df_cand = pd.merge(df_cand, df_sumstats.rename(columns={args.clump_snp_field: 'SNP_B'}), how='left', on='SNP_B')
@@ -1607,11 +1607,11 @@ def make_rs(args, log):
     log.log('Reading reference file {}...'.format(args.ref))
     usecols = [cols.SNP, cols.CHR, cols.BP]
     if args.a1a2: usecols = usecols + ['A1', 'A2']
-    ref_file = pd.read_table(args.ref, sep='\t', usecols=usecols)
+    ref_file = pd.read_csv(args.ref, sep='\t', usecols=usecols)
     log.log("Reference dict contains {d} snps.".format(d=len(ref_file)))
 
     log.log('Reading summary statistics file {}...'.format(args.sumstats))
-    reader = pd.read_table(args.sumstats, dtype=str, sep='\t', chunksize=args.chunksize)
+    reader = pd.read_csv(args.sumstats, dtype=str, sep='\t', chunksize=args.chunksize)
     n_snps = 0
     with open(args.out, 'a') as out_f:
         for chunk_index, chunk in enumerate(reader):
@@ -1655,7 +1655,7 @@ def make_ls(args, log):
         ncase = 'n/a' if np.isnan(ncase) else str(int(ncase))
         ncontrol = 'n/a' if np.isnan(ncontrol) else str(int(ncontrol))
 
-        for chunk in pd.read_table(file, sep='\t', chunksize=1):
+        for chunk in pd.read_csv(file, sep='\t', chunksize=1):
             yes_no_or_sample_size = [(  n if (x == 'N') else
                                         ncase if (x == 'NCASE') else
                                         ncontrol if (x == 'NCONTROL') else
@@ -1676,7 +1676,7 @@ def mat_to_csv(args, log):
     check_output_file(args.out, args.force)
 
     log.log('Reading reference file {}...'.format(args.ref))
-    ref_file = pd.read_table(args.ref, sep='\t', usecols=[cols.SNP, cols.A1, cols.A2])
+    ref_file = pd.read_csv(args.ref, sep='\t', usecols=[cols.SNP, cols.A1, cols.A2])
     log.log("Reference dict contains {d} snps.".format(d=len(ref_file)))
 
     log.log('Reading .mat file {}...'.format(args.mat))
@@ -1714,7 +1714,7 @@ def ldsc_to_mat(args, log):
     check_output_file(args.out, args.force)
 
     log.log('Reading reference file {}...'.format(args.ref))
-    ref_file = pd.read_table(args.ref, sep='\t', usecols=[cols.SNP, cols.A1, cols.A2])
+    ref_file = pd.read_csv(args.ref, sep='\t', usecols=[cols.SNP, cols.A1, cols.A2])
     log.log("Reference dict contains {d} snps.".format(d=len(ref_file)))
 
     save_dict = {}
@@ -1796,7 +1796,7 @@ def frq_to_mat(args, log):
 
     if args.ref:
         log.log('Reading reference file {}...'.format(args.ref))
-        ref_file = pd.read_table(args.ref, sep='\t', usecols=[cols.SNP, cols.A1, cols.A2])
+        ref_file = pd.read_csv(args.ref, sep='\t', usecols=[cols.SNP, cols.A1, cols.A2])
         log.log("Reference dict contains {d} snps.".format(d=len(ref_file)))
 
     save_dict = {}
@@ -1820,7 +1820,7 @@ def ref_to_mat(args, log):
     check_output_file(args.out, args.force)
 
     log.log('Reading reference file {}...'.format(args.ref))
-    ref_file = pd.read_table(args.ref, sep='\t')
+    ref_file = pd.read_csv(args.ref, sep='\t')
     log.log("Reference dict contains {d} snps.".format(d=len(ref_file)))
 
     save_dict = {}
@@ -1859,7 +1859,7 @@ def ldsum(args, log):
     check_output_file(args.out + ".l4.ldscore.gz", args.force)
 
     log.log('Reading {}...'.format(args.bim))
-    ref = pd.read_table(args.bim, delim_whitespace=True, header=None, names=['CHR', 'SNP', 'GP', 'BP', 'A1', 'A2'])
+    ref = pd.read_csv(args.bim, delim_whitespace=True, header=None, names=['CHR', 'SNP', 'GP', 'BP', 'A1', 'A2'])
     ref['INDEX_A'] = ref.index
     ref['INDEX_B'] = ref.index
     ref['SNP_A'] = ref['SNP']
@@ -1870,7 +1870,7 @@ def ldsum(args, log):
 
     if args.frq and args.per_allele:
         log.log('Reading {}...'.format(args.frq))
-        frq = pd.read_table(args.frq, delim_whitespace=True)
+        frq = pd.read_csv(args.frq, delim_whitespace=True)
         if len(frq) != len(ref):
             raise(ValueError('--frq file is not consistent with --ref file'))
         log.log('Done, {} markers found'.format(len(frq)))
@@ -1887,7 +1887,7 @@ def ldsum(args, log):
 
     log.log('Reading {} in chunks of {} lines at a time...'.format(args.ld, args.chunksize))
     n_snps = 0
-    for chunk_index, ld in enumerate(pd.read_table(args.ld, delim_whitespace=True, chunksize=args.chunksize, usecols=['SNP_A', 'SNP_B', 'R2'])):
+    for chunk_index, ld in enumerate(pd.read_csv(args.ld, delim_whitespace=True, chunksize=args.chunksize, usecols=['SNP_A', 'SNP_B', 'R2'])):
         n_snps += len(ld)
 
         ld_t = ld.copy()
@@ -2024,7 +2024,7 @@ def diff_mat(args, log):
         return
 
     log.log('Reading reference file {}...'.format(args.ref))
-    ref = pd.read_table(args.ref, sep='\t', usecols=[cols.SNP, cols.CHR, cols.BP])
+    ref = pd.read_csv(args.ref, sep='\t', usecols=[cols.SNP, cols.CHR, cols.BP])
     log.log("Reference dict contains {d} snps.".format(d=len(ref)))
 
     # Insert not-null vectors into the data frame
@@ -2036,7 +2036,7 @@ def diff_mat(args, log):
 
     if args.sumstats:
         log.log('Reading sumstats file {}...'.format(args.sumstats))
-        sumstats = pd.read_table(args.sumstats, sep='\t')
+        sumstats = pd.read_csv(args.sumstats, sep='\t')
         log.log("Sumstats file contains {d} markers.".format(d=len(sumstats)))
 
         sumstats_cols = sumstats.columns
@@ -2063,7 +2063,7 @@ def make_neff(args, log):
     check_output_file(args.out, args.force)
     
     log.log('Reading summary statistics file {}...'.format(args.sumstats))
-    df = pd.read_table(args.sumstats, delim_whitespace=True)
+    df = pd.read_csv(args.sumstats, delim_whitespace=True)
 
     if 'N' in df.columns:
         if (('NCASE' not in df.columns) or ('NCONTROL' not in df.columns)):
