@@ -75,6 +75,8 @@ default_cnames = {
     'RS_NUMBERS': cols.SNP,
     # CHROMOSOME
     'CHR': cols.CHR,
+    'CHROM': cols.CHR,
+    'CHROMSOME': cols.CHR,
     'CHROMOSOME' : cols.CHR,
     # POSITION
     'POS': cols.BP,
