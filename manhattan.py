@@ -192,7 +192,7 @@ def get_annot(fname):
     if fname == "NA":
         return pd.Series([])
     else:
-        series = pd.read_csv(fname,header=None,names=["snp", "label"],
+        series = pd.read_csv(fname,header=None,names=["snp", "label"],delim_whitespace=True,
             index_col="snp",squeeze=True)
         return series
 
