@@ -38,7 +38,7 @@ CB_COLORS = {"orange":"#e69f00",
 example_text =  """Example:
 python manhattan.py result.mat.csv \\
 --lead conj.result.clump.lead.csv --indep conj.result.clump.indep.csv \\
---p FDR --y-label FDR --p-thresh 0.05 --out fdr_manhattan.png"""
+--p FDR --y-label FDR --p-thresh 0.05 --out fdr_manhattan"""
 
 
 def parse_args(args):
@@ -96,15 +96,18 @@ def parse_args(args):
             "Chromosomes with non-integer ids should be indicated separately"))
     parser.add_argument("--striped-background", action="store_true",
         help="Draw grey background for every second chromosome")
+    parser.add_argument("--color-list", nargs="+", default=[1], help="Use specified color list, e.g. 1 3 5 7 9 11 13 15 17 19; 2 4 6 8 10 12 14 16 18 20; orange sky_blue bluish_green yellow blue vermillion reddish_purple black")
     parser.add_argument("--cb-colors", action="store_true",
         help="Use colors designed for color-blind people")
     parser.add_argument("--seed", type=int, default=1, help="Random seed")
-    parser.add_argument("--out", default="manhattan.png", help="Out file name")
+    parser.add_argument("--out", default="manhattan", help="Out file name")
     parser.add_argument("--separate-sumstats", action="store_true",
         help="Plot each sumstat in a separate subplot.")
 
     parser.add_argument("--y-label", default="P",
         help="Label of y axis. Label in the figure will be: -log10(y_label).")
+    parser.add_argument("--legend-location", default="best",
+        help="Legend location: 'best', 'upper right', 'upper left', 'lower left', 'lower right', 'right', 'center left', 'center right', 'lower center', 'upper center', 'center'")
     parser.add_argument("--no-legend", action="store_true",
         help="Don't add legend to the figure.")
     parser.add_argument("--legend-labels", nargs="+", default=["NA"],
@@ -172,7 +175,8 @@ def get_lead(fname):
     if (fname == "NA") or (os.stat(fname).st_size == 0):
         return np.array([])
     else:
-        df = pd.read_csv(fname)
+        df = pd.read_csv(fname, delim_whitespace=True)
+        print(df)
         return df.loc[df.is_locus_lead,"LEAD_SNP"].values
 
 
@@ -180,7 +184,7 @@ def get_indep_sig(fname):
     if (fname == "NA") or (os.stat(fname).st_size == 0):
         return np.array([])
     else:
-        df = pd.read_csv(fname)
+        df = pd.read_csv(fname, delim_whitespace=True)
         return df["INDEP_SNP"].values
 
 
@@ -372,7 +376,12 @@ if __name__ == "__main__":
 
     np.random.seed(args.seed)
 
-    if args.cb_colors:
+    if args.color_list:
+        assert len(args.sumstats) <= len(args.color_list), "%d is maximum number of sumstats to plot simultaneously with specified color scheme" % len(color_list)
+        color_names = [int(x) if x.isdigit() else x for x in args.color_list]
+        color_names_annot = color_names
+        color_dict = {**DEFAULT_COLORS, **CB_COLORS}
+    elif args.cb_colors:
         assert len(args.sumstats) <= len(CB_COLOR_NAMES), "%d is maximum number of sumstats to plot simultaneously with color-blind color scheme" % len(CB_COLOR_NAMES)
         color_names = CB_COLOR_NAMES
         color_names_annot = CB_COLOR_NAMES_ANNOT
@@ -405,6 +414,7 @@ if __name__ == "__main__":
 
     # make plot
     print("Making plot")
+    plt.rc('legend',fontsize=15)
     fig, axarr = plt.subplots(n_subplots, squeeze=False, figsize=(14,5*n_subplots), dpi=200)
     axarr = axarr[:,0] # squeeze second dimention since we don't need it here
 
@@ -455,9 +465,11 @@ if __name__ == "__main__":
         ax.hlines([-np.log10(args.p_thresh)], 0, 1, colors='k', linestyles='dotted',
             transform=ax.get_yaxis_transform())
 
+        ax.tick_params(axis='y', which='major', labelsize=15)
+        ax.tick_params(axis='x', which='major', labelsize=15)
         x_ticks = chr_df["start"] + 0.5*chr_df["rel_size"]
         ax.set_xticks(x_ticks)
-        ax.set_xticklabels(map(str, x_ticks.index))
+        ax.set_xticklabels(map(str, x_ticks.index), fontsize=14)
 
         ax.set_xlim((-0.1,
             chr_df.loc[chr_df.index[-1], "start"] + chr_df.loc[chr_df.index[-1], "rel_size"] + 0.1))
@@ -470,10 +482,13 @@ if __name__ == "__main__":
         ax.spines['left'].set_position(('outward',5))
         ax.spines['bottom'].set_position(('outward',5))
 
-        ax.set_xlabel("Chromosome")
-        ax.set_ylabel(r"$\mathrm{-log_{10}(%s)}$" % args.y_label)
+        ax.set_xlabel("Chromosome", fontsize=20)
+        ax.set_ylabel(r"$\mathrm{-log_{10}(%s)}$" % args.y_label, fontsize=20)
 
-        if not args.no_legend:
+        if args.legend_location:
+            handles = legends_handles[i:i+1] if args.separate_sumstats else legends_handles
+            ax.legend(handles=handles, loc=args.legend_location)
+        elif not args.no_legend:
             handles = legends_handles[i:i+1] if args.separate_sumstats else legends_handles
             ax.legend(handles=handles, loc='best')
 
@@ -482,6 +497,8 @@ if __name__ == "__main__":
 
     # save/show
     # plt.savefig(args.out)
-    plt.savefig(args.out)
+    plt.savefig(args.out+'.png')
+    plt.savefig(args.out+'.pdf')
+    plt.savefig(args.out+'.svg')
     # plt.show()
     print("%s was generated" % args.out)
