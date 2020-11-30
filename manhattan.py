@@ -38,7 +38,8 @@ CB_COLORS = {"orange":"#e69f00",
 example_text =  """Example:
 python manhattan.py result.mat.csv \\
 --lead conj.result.clump.lead.csv --indep conj.result.clump.indep.csv \\
---p FDR --y-label FDR --p-thresh 0.05 --out fdr_manhattan"""
+--p FDR --y-label conjFDR --color-list 1 --legend-label 'Trait1 & Trait2' \\
+--legend-location 'upper right' --p-thresh 0.05 --out conjfdr_manhattan"""
 
 
 def parse_args(args):
@@ -96,7 +97,8 @@ def parse_args(args):
             "Chromosomes with non-integer ids should be indicated separately"))
     parser.add_argument("--striped-background", action="store_true",
         help="Draw grey background for every second chromosome")
-    parser.add_argument("--color-list", nargs="+", default=[1], help="Use specified color list, e.g. 1 3 5 7 9 11 13 15 17 19; 2 4 6 8 10 12 14 16 18 20; orange sky_blue bluish_green yellow blue vermillion reddish_purple black")
+    parser.add_argument("--color-list", nargs="+", default=[1],
+        help="Use specified color list, e.g. 1 3 5 7 9 11 13 15 17 19; 2 4 6 8 10 12 14 16 18 20; orange sky_blue bluish_green yellow blue vermillion reddish_purple black")
     parser.add_argument("--cb-colors", action="store_true",
         help="Use colors designed for color-blind people")
     parser.add_argument("--seed", type=int, default=1, help="Random seed")
