@@ -176,7 +176,6 @@ def get_lead(fname):
         return np.array([])
     else:
         df = pd.read_csv(fname, delim_whitespace=True)
-        print(df)
         return df.loc[df.is_locus_lead,"LEAD_SNP"].values
 
 
