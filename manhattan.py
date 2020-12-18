@@ -97,7 +97,7 @@ def parse_args(args):
             "Chromosomes with non-integer ids should be indicated separately"))
     parser.add_argument("--striped-background", action="store_true",
         help="Draw grey background for every second chromosome")
-    parser.add_argument("--color-list", nargs="+",
+    parser.add_argument("--color-list", nargs="+", default=[1],
         help="Use specified color list, e.g. 1 3 5 7 9 11 13 15 17 19; 2 4 6 8 10 12 14 16 18 20; orange sky_blue bluish_green yellow blue vermillion reddish_purple black")
     parser.add_argument("--cb-colors", action="store_true",
         help="Use colors designed for color-blind people")
