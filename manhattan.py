@@ -98,7 +98,7 @@ def parse_args(args):
     parser.add_argument("--striped-background", action="store_true",
         help="Draw grey background for every second chromosome")
     parser.add_argument("--color-list", nargs="+", default=[],
-        help="Use specified color list, e.g. 1 3 5 7 9 11 13 15 17 19; 2 4 6 8 10 12 14 16 18 20; orange sky_blue bluish_green yellow blue vermillion reddish_purple black")
+        help="Use specified color list, e.g. 1 3 5 7 9 11 13 15 17 19; 2 4 6 8 10 12 14 16 18 20; orange sky_blue bluish_green yellow blue vermillion reddish_purple black, or any colors listed on https://python-graph-gallery.com/100-calling-a-color-with-seaborn")
     parser.add_argument("--cb-colors", action="store_true",
         help="Use colors designed for color-blind people")
     parser.add_argument("--seed", type=int, default=1, help="Random seed")
@@ -382,6 +382,9 @@ if __name__ == "__main__":
         color_names = [int(x) if x.isdigit() else x for x in args.color_list]
         color_names_annot = color_names
         color_dict = {**DEFAULT_COLORS, **CB_COLORS}
+        for x in args.color_list:
+            if x not in color_dict:
+                color_dict[x] = x
     elif args.cb_colors:
         assert len(args.sumstats) <= len(CB_COLOR_NAMES), "%d is maximum number of sumstats to plot simultaneously with color-blind color scheme" % len(CB_COLOR_NAMES)
         color_names = CB_COLOR_NAMES
