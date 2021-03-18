@@ -1226,11 +1226,11 @@ def make_variantid(args, log):
     check_output_file(args.out, args.force)
 
     log.log('Reading summary statistics file {}...'.format(args.sumstats))
-    df = pd.read_csv(args.sumstats, sep='\t')
+    df = pd.read_csv(args.sumstats, sep='\t', dtype={"CHR":str})
     log.log('Done, {} markers found'.format(len(df)))
 
     log.log('Reading reference file {}...'.format(args.ref))
-    ref = pd.read_csv(args.ref, sep='\t', usecols=[cols.CHR, cols.BP, cols.A1, cols.A2])
+    ref = pd.read_csv(args.ref, sep='\t', usecols=[cols.CHR, cols.BP, cols.A1, cols.A2], dtype={cols.CHR:str})
     ref.rename(columns={'A1': 'A1_ref', 'A2': 'A2_ref'}, inplace=True)
     log.log("Reference dict contains {d} snps.".format(d=len(ref)))
 
