@@ -108,6 +108,7 @@ def parse_args(args):
 
     parser.add_argument("--y-label", default="P",
         help="Label of y axis. Label in the figure will be: -log10(y_label).")
+    parser.add_argument("--y-max", type=float, default=-1, help="Upper limit of y axis. Default: autodetect.")
     parser.add_argument("--legend-location", default="best",
         help="Legend location: 'best', 'upper right', 'upper left', 'lower left', 'lower right', 'right', 'center left', 'center right', 'lower center', 'upper center', 'center'")
     parser.add_argument("--no-legend", action="store_true",
@@ -424,9 +425,12 @@ if __name__ == "__main__":
 
 
     # find upper limit for Y axis
-    y_up = max([df["log10p"].max() for df in dfs2plot])
-    y_up = max(y_up, -np.log10(args.p_thresh))
-    y_up *= 1.05
+    if args.y_max > 0:
+        y_up = args.y_max
+    else:
+        y_up = max([df["log10p"].max() for df in dfs2plot])
+        y_up = max(y_up, -np.log10(args.p_thresh))
+        y_up *= 1.05
 
     if args.striped_background:
         for ax in axarr:
