@@ -1326,14 +1326,14 @@ def make_lift(args, log):
 
         if cols.CHR in df and cols.BP in df:
             idx = ((df['pos'] != df[cols.BP]) | (df['chr'] != df[cols.CHR])) & ~df['pos'].isnull() & ~df['chr'].isnull()
-            df.ix[idx, cols.BP] = df.ix[idx, 'pos'].astype(int)
-            df.ix[idx, cols.CHR] = df.ix[idx, 'chr'].astype(int)
+            df.loc[idx, cols.BP] = df.loc[idx, 'pos'].astype(int)
+            df.loc[idx, cols.CHR] = df.loc[idx, 'chr'].astype(int)
             fixes.append('{} markers receive new CHR:POS based on SNPChrPosOnRef table'.format(idx.sum()))
         else:
             idx = ~df['pos'].isnull() & ~df['chr'].isnull()
             df[cols.BP] = np.nan; df[cols.CHR] = np.nan
-            df.ix[idx, cols.BP] = df.ix[idx, 'pos'].astype(int)
-            df.ix[idx, cols.CHR] = df.ix[idx, 'chr'].astype(int)
+            df.loc[idx, cols.BP] = df.loc[idx, 'pos'].astype(int)
+            df.loc[idx, cols.CHR] = df.loc[idx, 'chr'].astype(int)
             fixes.append('{} markers receive CHR:POS based on SNPChrPosOnRef table'.format(idx.sum()))
 
         indices_with_old_chrpos = [i for (i, b) in enumerate(df['pos'].isnull() | df['chr'].isnull()) if b]
@@ -1358,12 +1358,12 @@ def make_lift(args, log):
         unique = 0; multi = 0; failed = 0
         for i, index in enumerate(indices_with_old_chrpos):
             if (i+1) % 100 == 0: eprint('Finish {} SNPs'.format(i+1))
-            chri = int(df.ix[index, cols.CHR]); bp = int(df.ix[index, cols.BP]); snp = df.ix[index, cols.SNP]
+            chri = int(df.loc[index, cols.CHR]); bp = int(df.loc[index, cols.BP]); snp = df.loc[index, cols.SNP]
             lifted = lift_bp.convert_coordinate('chr{}'.format(chri), bp)
             if (lifted is None) or (len(lifted) == 0):
                 #log.log('Unable to lift SNP {} at chr{}:{}, delete'.format(snp, chri, bp))
-                df.ix[index, cols.CHR] = None
-                df.ix[index, cols.BP] = None
+                df.loc[index, cols.CHR] = None
+                df.loc[index, cols.BP] = None
                 failed += 1
                 continue
             if len(lifted) > 1:
@@ -1372,8 +1372,8 @@ def make_lift(args, log):
             if len(lifted) == 1:
                 unique += 1
 
-            df.ix[index, cols.CHR] = int(lifted[0][0][3:])
-            df.ix[index, cols.BP] = lifted[0][1]
+            df.loc[index, cols.CHR] = int(lifted[0][0][3:])
+            df.loc[index, cols.BP] = lifted[0][1]
         log.log('Done, {} failed, {} unique, {} multi'.format(failed, unique, multi))
         fixes.append('{} markers receive new CHR:POS based on liftover chain files'.format(unique + multi))
 
