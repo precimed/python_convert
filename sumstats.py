@@ -1356,14 +1356,19 @@ def make_lift(args, log):
         # Note that lifting with pyliftover is rather slow, so we apply this step only to markers that are not in SNPChrPosOnRef table.
         log.log('Lift CHR:POS for {} SNPs to another genomic build...'.format(len(indices_with_old_chrpos)))
         unique = 0; multi = 0; failed = 0
+        df_chr = []; df_bp = [] # Directly indexing into dataframe is way too slow
         for i, index in enumerate(indices_with_old_chrpos):
             if (i+1) % 100 == 0: eprint('Finish {} SNPs'.format(i+1))
             chri = int(df.loc[index, cols.CHR]); bp = int(df.loc[index, cols.BP]); snp = df.loc[index, cols.SNP]
             lifted = lift_bp.convert_coordinate('chr{}'.format(chri), bp)
+            try:
+                dummy = int(lifted[0][0][3:])
+            except:
+                lifted = None
             if (lifted is None) or (len(lifted) == 0):
                 #log.log('Unable to lift SNP {} at chr{}:{}, delete'.format(snp, chri, bp))
-                df.loc[index, cols.CHR] = None
-                df.loc[index, cols.BP] = None
+                df_chr.append(None)
+                df_bp.append(None)
                 failed += 1
                 continue
             if len(lifted) > 1:
@@ -1371,9 +1376,10 @@ def make_lift(args, log):
                 multi += 1
             if len(lifted) == 1:
                 unique += 1
-
-            df.loc[index, cols.CHR] = int(lifted[0][0][3:])
-            df.loc[index, cols.BP] = lifted[0][1]
+            df_chr.append(int(lifted[0][0][3:]))
+            df_bp.append(lifted[0][1])
+        df.loc[indices_with_old_chrpos, cols.CHR] = df_chr
+        df.loc[indices_with_old_chrpos, cols.BP] = df_bp
         log.log('Done, {} failed, {} unique, {} multi'.format(failed, unique, multi))
         fixes.append('{} markers receive new CHR:POS based on liftover chain files'.format(unique + multi))
 
