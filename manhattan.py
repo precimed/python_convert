@@ -91,6 +91,8 @@ def parse_args(args):
         "These files should contain a single column with SNP ids without header")
     parser.add_argument("--downsample-frac", nargs="+", type=float,
         default=[0.005], help="Fraction of SNPs to take for plotting")
+    parser.add_argument("--downsample-thresh", nargs="+", type=float,
+        default=[None], help="Only SNPs with p-values larger than the threshold are downsampled")
     parser.add_argument("--chr2use", type=str, default="1-22",
         help=("Chromosome ids to plot (e.g. 1,2,3 or 1-4,12,16-20 or 19-22,X,Y). "
             "The order in the figure will correspond to the order in this argument. "
@@ -164,6 +166,7 @@ def process_args(args):
     assert len(args.p) == n, "--p " + msg
     assert len(args.snps_to_keep) == n, "--snps-to-keep" + msg
     assert len(args.downsample_frac) == n, "--downsample-frac" + msg
+    assert len(args.downsample_thresh) == n, "--downsample-thresh" + msg
     assert len(args.legend_labels) == n, "--legend-labels" + msg
 
 
@@ -196,7 +199,7 @@ def get_annot(fname):
     Return empty Series if fname == "NA"
     """
     if fname == "NA":
-        return pd.Series([])
+        return pd.Series([], dtype=object)
     else:
         series = pd.read_csv(fname,header=None,names=["snp", "label"],delim_whitespace=True,
             index_col="snp",squeeze=True)
@@ -237,7 +240,7 @@ def filter_sumstats(sumstats_f, sep, snpid_col, pval_col, chr_col, bp_col, chr2u
 
 
 def get_df2plot(df, outlined_snps_f, bold_snps_f, lead_snps_f, indep_snps_f,
-    annot_f, snps_to_keep_f, downsample_frac, pval_col):
+    annot_f, snps_to_keep_f, downsample_frac, downsample_thresh, pval_col):
     """
     Select variants which will be plotted. Mark lead and independent significant
     variants if corresponding information is provided.
@@ -251,6 +254,8 @@ def get_df2plot(df, outlined_snps_f, bold_snps_f, lead_snps_f, indep_snps_f,
             variants are considered when downsampling take place 
         downsample_frac: a fraction of variants which will be sampled from df
             for plotting
+        downsample_thresh: only variants with p-value larger than this threshold
+            are downsampled
         pval_col: a column with p-values in df
     Returns:
         df2plot: DataFrame with variants for plotting
@@ -271,18 +276,29 @@ def get_df2plot(df, outlined_snps_f, bold_snps_f, lead_snps_f, indep_snps_f,
         ii = df.index.intersection(snps2keep)
         df = df.loc[ii,:]
         print("%d SNPs overlap with %s" % (len(df),snps_to_keep_f))
-    n = int(downsample_frac*len(df))
+    if not downsample_thresh is None:
+        i2downsample = df[pval_col]>downsample_thresh
+        df2downsample = df.loc[i2downsample,:]
+        snps2downsample = df2downsample.index
+        snps2downsample_pvals = df2downsample[pval_col]
+        snps2keep = df.loc[~i2downsample,:].index.values
+    else:
+        snps2downsample = df.index
+        snps2downsample_pvals = df[pval_col]
+        snps2keep = []
+    n = int(downsample_frac*len(snps2downsample))
     # w = 1/df[pval_col].values
-    w = -np.log10(df[pval_col].values)
+    w = -np.log10(snps2downsample_pvals.values)
     w /= sum(w)
-    snp_sample = np.random.choice(df.index,size=n,replace=False,p=w)
+
+    snp_sample = np.random.choice(snps2downsample,size=n,replace=False,p=w)
     # TODO: keep SNPs within identified loci with higher prob?
     # NOTE: it could be that there are snp ids in outlined_snp_ids or bold_snp_ids which
     # are not in df.index, therefore we should take an index.intersection first.
     outlined_snp_ids = df.index.intersection(outlined_snp_ids)
     bold_snp_ids = df.index.intersection(bold_snp_ids)
     annot_snp_ids = df.index.intersection(annot_series.index)
-    snps2keep = np.unique(np.concatenate((outlined_snp_ids, bold_snp_ids,
+    snps2keep = np.unique(np.concatenate((snps2keep, outlined_snp_ids, bold_snp_ids,
         snp_sample, annot_snp_ids)))
     df2plot = df.loc[snps2keep,:]
     df2plot.loc[:,"outlined"] = False
@@ -407,7 +423,8 @@ if __name__ == "__main__":
         for i,s in enumerate(args.sumstats)]
 
     dfs2plot = [get_df2plot(df, args.outlined[i], args.bold[i], args.lead[i], args.indep[i],
-                            args.annot[i], args.snps_to_keep[i], args.downsample_frac[i], args.p[i])
+                            args.annot[i], args.snps_to_keep[i], args.downsample_frac[i],
+                            args.downsample_thresh[i], args.p[i])
         for i, df in enumerate(sumstat_dfs)]
 
     chr_df = get_chr_df(dfs2plot, args.bp, args.chr, args.between_chr_gap, args.chr2use)
