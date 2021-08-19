@@ -51,9 +51,9 @@ def align_alleles(z, alleles):
         raise KeyError('Incompatible alleles. ')
     return z
 
-Cols = namedtuple('Cols', ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'EA', 'N', 'NCASE', 'NCONTROL', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2', 'CHRPOSA1A2', 'DIRECTION'])
-cols = Cols._make(        ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'EA', 'N', 'NCASE', 'NCONTROL', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2', 'CHRPOSA1A2', 'DIRECTION'])
-cols_type_map =           {'SNP':str, 'CHR':int, 'BP':int, 'PVAL':np.float64, 'A1':str, 'A2':str, 'EA':str, 'N':float, 'NCASE':float, 'NCONTROL':float, 'Z':float, 'OR':float, 'BETA':float,
+Cols = namedtuple('Cols', ['SNP', 'CHR', 'BP', 'P', 'A1', 'A2', 'EA', 'N', 'NCASE', 'NCONTROL', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2', 'CHRPOSA1A2', 'DIRECTION'])
+cols = Cols._make(        ['SNP', 'CHR', 'BP', 'P', 'A1', 'A2', 'EA', 'N', 'NCASE', 'NCONTROL', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2', 'CHRPOSA1A2', 'DIRECTION'])
+cols_type_map =           {'SNP':str, 'CHR':int, 'BP':int, 'P':np.float64, 'A1':str, 'A2':str, 'EA':str, 'N':float, 'NCASE':float, 'NCONTROL':float, 'Z':float, 'OR':float, 'BETA':float,
                            'LOGODDS':float, 'SE':float, 'INFO':float, 'FRQ':float, 'NSTUDY':int, 'CHRPOS':str, 'A1A2':str, 'CHRPOSA1A2':str, 'DIRECTION':str }
 null_values = {
     cols.LOGODDS: 0,
@@ -89,13 +89,13 @@ default_cnames = {
     'NSTUDIES': cols.NSTUDY,
     'N_STUDIES': cols.NSTUDY,
     # P-VALUE
-    'P': cols.PVAL,
-    'PVALUE': cols.PVAL,
-    'P_VALUE':  cols.PVAL,
-    'PVAL': cols.PVAL,
-    'P_VAL': cols.PVAL,
-    'GC_PVALUE': cols.PVAL,
-    'MTAG_PVAL': cols.PVAL,
+    'P': cols.P,
+    'PVALUE': cols.P,
+    'P_VALUE':  cols.P,
+    'PVAL': cols.P,
+    'P_VAL': cols.P,
+    'GC_PVALUE': cols.P,
+    'MTAG_PVAL': cols.P,
     # ALLELE 1
     'A1': cols.A1,
     'ALLELE1': cols.A1,

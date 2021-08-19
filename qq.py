@@ -10,15 +10,15 @@ import pandas as pd
 import json
 
 # Examples:
-# python qq.py MSA_MSA_2016_lift_noMHC_correct_case_control.csv.gz --strata CTG_COG_2018.csv.gz --strata-num PVAL --top-as-dot 100 --weights weights.tld.txt.gz --out qq.msa_cog.top100.tld.png
+# python qq.py MSA_MSA_2016_lift_noMHC_correct_case_control.csv.gz --strata CTG_COG_2018.csv.gz --strata-num P --top-as-dot 100 --weights weights.tld.txt.gz --out qq.msa_cog.top100.tld.png
 # python qq.py PGC_MDD_2018_no23andMe.csv.gz --strata PGC_MDD_2018_no23andMe.csv.gz --strata-cat CHR --strata-cat-ids 'chr1_10=1:2:3:4:5:6:7:8:9:10,chr11_20=11:12:13:14:15:16:17:18:19:20,chr21_22=21:22' --top-as-dot 100 --weights weights.prune.txt.gz --y-lim 7.301029995663981 --out qq.mdd.chr.top100.prune.png
-# python qq.py PGC_SCZ_2014_EUR_qc.csv.gz --strata PGC_MDD_2018_no23andMe.csv.gz --strata-num PVAL --top-as-dot 100 --weights weights.prune.txt.gz --out qq.scz_mdd.top100.prune.png --y-lim 7.301029995663981
+# python qq.py PGC_SCZ_2014_EUR_qc.csv.gz --strata PGC_MDD_2018_no23andMe.csv.gz --strata-num P --top-as-dot 100 --weights weights.prune.txt.gz --out qq.scz_mdd.top100.prune.png --y-lim 7.301029995663981
 
 example_text =  """Example 1:
 python qq.py PGC_BIP_2016_qc.csv.gz
 Example 2:
 python qq.py PGC_SCZ_2014_EUR_qc.csv.gz --strata PGC_MDD_2018_no23andMe.csv.gz \\
---strata-num PVAL --top-as-dot 100 --weights weights.prune.txt.gz \\
+--strata-num P --top-as-dot 100 --weights weights.prune.txt.gz \\
 --out qq.scz_mdd.top100.prune.png --y-lim 15
 Example 3:
 python qq.py PGC_MDD_2018_no23andMe.csv.gz --strata PGC_MDD_2018_no23andMe.csv.gz \\

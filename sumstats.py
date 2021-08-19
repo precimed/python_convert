@@ -137,7 +137,7 @@ def parse_args(args):
     parser_qc.add_argument("--dropna-cols", type=str, nargs='+',
         help='List of column names. SNPs with missing values in either of the columns will be excluded.')
     parser_qc.add_argument("--fix-dtype-cols", type=str, nargs='+',
-        help='List of column names. Ensure appropriate data type for the columns (CHR, BP - int, PVAL - float, etc)')
+        help='List of column names. Ensure appropriate data type for the columns (CHR, BP - int, P - float, etc)')
     parser_qc.add_argument("--require-cols", type=str, nargs='+',
         help='List of column names to require in the input. '
         'Adding "EFFECT"" to the list will have a special meaning: at least one of BETA, OR, LOGODDS, Z columns must be present in the input.')
@@ -293,7 +293,7 @@ def parse_args(args):
     parser_clump.add_argument("--chr-labels", type=str, nargs='+',
         help="List of chromosome labels to substitute for @, default to 1..22")
 
-    parser_clump.add_argument("--clump-field", type=str, default='PVAL', help="Column to clump on.")
+    parser_clump.add_argument("--clump-field", type=str, default='P', help="Column to clump on.")
     parser_clump.add_argument("--clump-snp-field", type=str, default='SNP', help="Column with marker name.")
     parser_clump.add_argument("--chr", type=str, default='CHR', help="Column name with chromosome labels. ")
 
@@ -639,7 +639,7 @@ def make_csv(args, log):
                 if (cols.CHRPOS not in final_cols) and (cols.CHRPOSA1A2 not in final_cols) and (cols.CHR not in final_cols): log.log('Warning: CHR column ({}) is not found'.format(describe_cname[cols.CHR]))
                 if (cols.CHRPOS not in final_cols) and (cols.CHRPOSA1A2 not in final_cols) and (cols.BP not in final_cols): log.log('Warning: BP column ({}) is not found'.format(describe_cname[cols.BP]))
                 if cols.SNP not in final_cols: log.log('Warning: SNP column ({}) is not found'.format(describe_cname[cols.SNP]))
-                if cols.PVAL not in final_cols: log.log('Warning: PVAL column ({}) is not found'.format(describe_cname[cols.PVAL]))
+                if cols.P not in final_cols: log.log('Warning: P column ({}) is not found'.format(describe_cname[cols.PVAL]))
                 if (cols.A1 not in final_cols) and (cols.A1A2 not in final_cols) and (cols.CHRPOSA1A2 not in final_cols): log.log('Warning: A1 column ({}) is not found'.format(describe_cname[cols.A1]))
                 if (cols.A2 not in final_cols) and (cols.A1A2 not in final_cols) and (cols.CHRPOSA1A2 not in final_cols): log.log('Warning: A2 column ({}) is not found'.format(describe_cname[cols.A2]))
                 effect_size_column_count = int(cols.Z in final_cols) + int(cols.OR in final_cols) + int(cols.BETA in final_cols) + int(cols.LOGODDS in final_cols)
@@ -807,8 +807,8 @@ def make_qc(args, log):
         log.log('Warning: skip --info ("INFO" column not found in {})'.format(args.sumstats))
         args.info = None
 
-    if (args.min_pval is not None) and ('PVAL' not in sumstats):
-        log.log('Warning: skip --min-pval ("PVAL" column not found in {})'.format(args.sumstats))
+    if (args.min_pval is not None) and (cols.PVAL not in sumstats):
+        log.log('Warning: skip --min-pval ("P" column not found in {})'.format(args.sumstats))
         args.min_pval = None
 
     if args.update_z_col_from_beta_and_se and (('BETA' not in sumstats) or ('SE' not in sumstats)):
@@ -831,7 +831,7 @@ def make_qc(args, log):
     if args.maf is not None: args.fix_dtype_cols.append('FRQ')
     if args.info is not None: args.fix_dtype_cols.append('INFO')
     if args.update_z_col_from_beta_and_se: args.fix_dtype_cols.extend(['BETA', 'SE'])
-    if args.min_pval is not None: args.fix_dtype_cols.append('PVAL')
+    if args.min_pval is not None: args.fix_dtype_cols.append(cols.PVAL)
 
     # Validate that all required columns are present
     if (args.just_acgt or args.snps_only or args.drop_strand_ambiguous_snps) and (('A1' not in sumstats) or ('A2' not in sumstats)):
@@ -872,7 +872,7 @@ def make_qc(args, log):
             drop_labels=sumstats.index[sumstats.INFO < args.info])
 
     if args.min_pval is not None:
-        drop_sumstats(sumstats, log, 'PVAL below threshold {} or above 1.0'.format(args.min_pval),
+        drop_sumstats(sumstats, log, 'P below threshold {} or above 1.0'.format(args.min_pval),
             drop_labels=sumstats.index[(sumstats.PVAL < args.min_pval) | (sumstats.PVAL > 1.0)])
 
     if args.update_z_col_from_beta_and_se:
@@ -989,10 +989,10 @@ def make_pvalue(args, log):
     columns = list(pd.read_csv(args.sumstats, sep='\t', nrows=0).columns)
     log.log('Columns in {}: {}'.format(args.sumstats, columns))
 
-    if 'PVAL' in columns:
-        log.log('PVAL already exists, nothing to be done.')
+    if cols.P in columns:
+        log.log('P already exists, nothing to be done.')
         return
-    if ('Z' not in columns) and (('BETA' not in columns) or ('SE' not in column)):
+    if ('Z' not in columns) and (('BETA' not in columns) or ('SE' not in columns)):
         raise(ValueError("Neither Z nor BETA/SE are available in the input summary stats file"))
 
     log.log('Reading summary statistics file {}...'.format(args.sumstats))
@@ -1633,7 +1633,7 @@ def make_rs(args, log):
 ### =================================================================================
 def make_ls(args, log):
     ml = max([len(os.path.basename(file).replace('.csv.gz', '')) for file in glob.glob(args.path)])
-    cols_list = [x for x in cols._asdict() if x not in ['A1A2', 'CHRPOS', 'CHRPOSA1A2', 'SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2']]
+    cols_list = [x for x in cols._asdict() if x not in ['A1A2', 'CHRPOS', 'CHRPOSA1A2', 'SNP', 'CHR', 'BP', cols.PVAL, 'A1', 'A2']]
     log.log('{f}\t{n}\t{c}'.format(f='file'.ljust(ml),n='#snp'.ljust(9),c='\t'.join([x.replace('NCONTROL', 'NCONT.') for x in cols_list])))
     for file in glob.glob(args.path):
         if not os.path.isfile(file): continue
@@ -1687,7 +1687,7 @@ def mat_to_csv(args, log):
             df['Z'] = sumstats[key]
             log.log('Found zvec, {} non-nan values.'.format(np.sum(~np.isnan(sumstats[key]))))
         if key.lower().startswith('logpvec'):
-            df['PVAL'] = np.power(10, -sumstats[key])
+            df[cols.PVAL] = np.power(10, -sumstats[key])
             log.log('Found logpvec, {} non-nan values.'.format(np.sum(~np.isnan(sumstats[key]))))
         if key.lower().startswith('nvec'):
             df['N'] = sumstats[key]
