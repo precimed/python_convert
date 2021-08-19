@@ -35,7 +35,7 @@ def parse_args(args):
     parser.add_argument("sumstats", help="Sumstats file")
     parser.add_argument("--sep", default='\t',
         help="Column separator in sumstat file")
-    parser.add_argument("--p", default="PVAL",
+    parser.add_argument("--p", nargs='+', default=["P", "PVAL"],
         help="A column with SNP p-values in sumstats file")
     parser.add_argument("--snp", default="SNP",
         help="A column with SNP ids in sumstats file")
@@ -123,7 +123,7 @@ def process_args(args):
         arg_dict["strata_cat_ids"] = categories
 
 
-def read_sumstats(sumstats_f, sep, snpid_col, pval_col):
+def read_sumstats(sumstats_f, sep, snpid_col, pval_cols):
     """
     Filter original summary stats file.
     Args:
@@ -135,16 +135,24 @@ def read_sumstats(sumstats_f, sep, snpid_col, pval_col):
         df: filtered p-values, pd.DataFrame(index=snp_id, values=pval)
     """
     print("Reading %s" % sumstats_f)
-    cols2use = [snpid_col, pval_col]
+
+    # allow for either of pval_cols to be present in the df file
+    cols2use = lambda x: x in ([snpid_col] + pval_cols)
     df = pd.read_csv(sumstats_f, usecols=cols2use, index_col=snpid_col,
         sep=sep)
+    pval_cols_available = [v for v in pval_cols if (v in df.columns)]
+    if len(pval_cols_available) == 0:
+        raise ValueError('none of {} columns is available'.format(', '.join(pval_cols)))
+    pval_col = pval_cols_available[0]
+    print('use %s as p-value column' % pval_col)
+
     print("%d SNPs in %s" % (len(df), sumstats_f))
     df = df.loc[np.isfinite(df[pval_col]),:]
     print("%d SNPs with defined p-value" % len(df))
     df = df.loc[df[pval_col]>0,:]
     print("%d SNPs with non-zero p-value" % len(df))
     df = drop_duplicated_ind(df)
-    return df
+    return df, pval_col
 
 
 def read_strata_cat(strata_f, sep, snpid_col, strata_cat_col, strata_cat_ids):
@@ -275,7 +283,7 @@ if __name__ == "__main__":
     args = parse_args(sys.argv[1:])
     process_args(args)
 
-    df_sumstats = read_sumstats(args.sumstats, args.sep, args.snp, args.p)
+    df_sumstats, args.p = read_sumstats(args.sumstats, args.sep, args.snp, args.p)
 
     df_strata = None
     if args.strata_cat != "NA":
