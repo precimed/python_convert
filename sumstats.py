@@ -639,7 +639,7 @@ def make_csv(args, log):
                 if (cols.CHRPOS not in final_cols) and (cols.CHRPOSA1A2 not in final_cols) and (cols.CHR not in final_cols): log.log('Warning: CHR column ({}) is not found'.format(describe_cname[cols.CHR]))
                 if (cols.CHRPOS not in final_cols) and (cols.CHRPOSA1A2 not in final_cols) and (cols.BP not in final_cols): log.log('Warning: BP column ({}) is not found'.format(describe_cname[cols.BP]))
                 if cols.SNP not in final_cols: log.log('Warning: SNP column ({}) is not found'.format(describe_cname[cols.SNP]))
-                if cols.P not in final_cols: log.log('Warning: P column ({}) is not found'.format(describe_cname[cols.PVAL]))
+                if cols.P    not in final_cols: log.log('Warning: P column ({}) is not found'.format(describe_cname[cols.P]))
                 if (cols.A1 not in final_cols) and (cols.A1A2 not in final_cols) and (cols.CHRPOSA1A2 not in final_cols): log.log('Warning: A1 column ({}) is not found'.format(describe_cname[cols.A1]))
                 if (cols.A2 not in final_cols) and (cols.A1A2 not in final_cols) and (cols.CHRPOSA1A2 not in final_cols): log.log('Warning: A2 column ({}) is not found'.format(describe_cname[cols.A2]))
                 effect_size_column_count = int(cols.Z in final_cols) + int(cols.OR in final_cols) + int(cols.BETA in final_cols) + int(cols.LOGODDS in final_cols)
@@ -807,7 +807,7 @@ def make_qc(args, log):
         log.log('Warning: skip --info ("INFO" column not found in {})'.format(args.sumstats))
         args.info = None
 
-    if (args.min_pval is not None) and (cols.PVAL not in sumstats):
+    if (args.min_pval is not None) and (cols.P not in sumstats):
         log.log('Warning: skip --min-pval ("P" column not found in {})'.format(args.sumstats))
         args.min_pval = None
 
@@ -831,7 +831,7 @@ def make_qc(args, log):
     if args.maf is not None: args.fix_dtype_cols.append('FRQ')
     if args.info is not None: args.fix_dtype_cols.append('INFO')
     if args.update_z_col_from_beta_and_se: args.fix_dtype_cols.extend(['BETA', 'SE'])
-    if args.min_pval is not None: args.fix_dtype_cols.append(cols.PVAL)
+    if args.min_pval is not None: args.fix_dtype_cols.append(cols.P)
 
     # Validate that all required columns are present
     if (args.just_acgt or args.snps_only or args.drop_strand_ambiguous_snps) and (('A1' not in sumstats) or ('A2' not in sumstats)):
@@ -873,7 +873,7 @@ def make_qc(args, log):
 
     if args.min_pval is not None:
         drop_sumstats(sumstats, log, 'P below threshold {} or above 1.0'.format(args.min_pval),
-            drop_labels=sumstats.index[(sumstats.PVAL < args.min_pval) | (sumstats.PVAL > 1.0)])
+            drop_labels=sumstats.index[(sumstats.P < args.min_pval) | (sumstats.P > 1.0)])
 
     if args.update_z_col_from_beta_and_se:
         sumstats['Z'] = np.divide(sumstats.BETA.values, sumstats.SE.values)
@@ -935,7 +935,7 @@ def make_zscore(args, log):
         if effect_size_column_count > 1: log.log('Warning: Multiple columns indicate effect direction')
         if effect_size_column_count == 1: log.log('Use {} column as effect direction.'.format(args.effect))
 
-    missing_columns = [c for c in [cols.PVAL, args.effect] if (c != None) and (c not in columns)]
+    missing_columns = [c for c in [cols.P, args.effect] if (c != None) and (c not in columns)]
     if missing_columns: raise(ValueError('{} columns are missing'.format(missing_columns)))
 
     if args.a1_inc:
@@ -967,8 +967,8 @@ def make_zscore(args, log):
                     raise ValueError("OR column contains negative values")
                 effect_sign = np.sign(chunk[args.effect].values - 1)
                 effect_sign[effect_sign == 0] = 1
-            chunk[cols.PVAL] = pd.to_numeric(chunk[cols.PVAL], errors='coerce')
-            chunk[cols.Z] = -stats.norm.ppf(chunk[cols.PVAL].values*0.5)*effect_sign.astype(np.float64)
+            chunk[cols.P] = pd.to_numeric(chunk[cols.P], errors='coerce')
+            chunk[cols.Z] = -stats.norm.ppf(chunk[cols.P].values*0.5)*effect_sign.astype(np.float64)
             chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA')
             n_snps += len(chunk)
             eprint("{f}: {n} lines processed".format(f=args.sumstats, n=(chunk_index+1)*args.chunksize))
@@ -1002,9 +1002,9 @@ def make_pvalue(args, log):
         for chunk_index, chunk in enumerate(reader):
             if chunk_index==0: log.log('Column types: ' + ', '.join([column + ':' + str(dtype) for (column, dtype) in zip(chunk.columns, chunk.dtypes)]))
             if 'Z' in columns:
-                chunk[cols.PVAL] = scipy.stats.norm.sf(abs(chunk['Z'].values))*2
+                chunk[cols.P] = scipy.stats.norm.sf(abs(chunk['Z'].values))*2
             elif ('BETA'in columns) and ('SE' in columns):
-                chunk[cols.PVAL] = scipy.stats.norm.sf(abs(np.divide(chunk['BETA'].values, chunk['SE'].values)))*2
+                chunk[cols.P] = scipy.stats.norm.sf(abs(np.divide(chunk['BETA'].values, chunk['SE'].values)))*2
             chunk.to_csv(out_f, index=False, header=(chunk_index==0), sep='\t', na_rep='NA')
             n_snps += len(chunk)
             eprint("{f}: {n} lines processed".format(f=args.sumstats, n=(chunk_index+1)*args.chunksize))
@@ -1075,14 +1075,14 @@ def make_mat(args, log):
         log.log('Reading reference file {}...'.format(args.ref))
         df_ref = pd.read_csv(args.ref, sep='\t', usecols=[cols.SNP])
         log.log('Reading summary statistics file {}...'.format(args.sumstats))
-        df_sumstats = pd.read_csv(args.sumstats, sep='\t', float_precision='high', usecols=[cols.SNP, cols.PVAL])
+        df_sumstats = pd.read_csv(args.sumstats, sep='\t', float_precision='high', usecols=[cols.SNP, cols.P])
         log.log('Merging with reference file...')
         df_sumstats.drop_duplicates(subset=[cols.SNP], keep='first', inplace=True)
         df_result = pd.merge(df_ref, df_sumstats, how='left', on='SNP')
-        num_matches = df_result[cols.PVAL].notnull().sum()
+        num_matches = df_result[cols.P].notnull().sum()
         if num_matches == 0: raise(ValueError("No SNPs match after joining with reference data"))
         log.log("{f}: {n} SNPs matched with reference file".format(f=args.sumstats, n=num_matches))
-        sio.savemat(args.out, {'logpvec'+args.trait: -np.log10(df_result[cols.PVAL].values)}, format='5', do_compression=False, oned_as='column', appendmat=False)
+        sio.savemat(args.out, {'logpvec'+args.trait: -np.log10(df_result[cols.P].values)}, format='5', do_compression=False, oned_as='column', appendmat=False)
         log.log("%s created" % args.out)
         return
 
@@ -1125,7 +1125,7 @@ def make_mat(args, log):
             ncontrol_col = cols.NCONTROL if cols.NCONTROL in columns else None
             if (not args.without_n) and ((n_col is None) and ((ncase_col is None) or (ncontrol_col is None))):
                 raise(ValueError('Sample size column is not detected in {}. Expact either N or NCASE, NCONTROL column.'.format(args.sumstats)))
-            missing_columns = [c for c in [cols.A1, cols.A2, cols.SNP, cols.PVAL] if (c != None) and (c not in columns)]
+            missing_columns = [c for c in [cols.A1, cols.A2, cols.SNP, cols.P] if (c != None) and (c not in columns)]
             if missing_columns: raise(ValueError('{} columns are missing'.format(missing_columns)))
 
             log.log('Reading reference file {}...'.format(args.ref))
@@ -1158,13 +1158,13 @@ def make_mat(args, log):
         ind = [gt in ref_dict[sid] for sid, gt in zip(ss_chunk[cols.SNP], gtypes)]
         ss_chunk = ss_chunk.loc[ind,:]
         gtypes = [gt for gt, j in zip(gtypes, ind) if j]
-        log10pv = -np.log10(ss_chunk[cols.PVAL].values)
+        log10pv = -np.log10(ss_chunk[cols.P].values)
         # not_ref_effect = [
         #   1 if effect allele in data == other allele in reference
         #   -1 if effect allele in data == effect allele in reference ]
         # So zscores with positive effects will be positive and zscores with
         # negative effects will stay negative, since
-        # stats.norm.ppf(ss_chunk[cols.PVAL]*0.5) is always negetive (see zvect
+        # stats.norm.ppf(ss_chunk[cols.P]*0.5) is always negetive (see zvect
         # calculation below).
         not_ref_effect = np.array([1 if gt in ref_dict[sid][:2] else -1
             for sid, gt in zip(ss_chunk[cols.SNP], gtypes)])
@@ -1633,7 +1633,7 @@ def make_rs(args, log):
 ### =================================================================================
 def make_ls(args, log):
     ml = max([len(os.path.basename(file).replace('.csv.gz', '')) for file in glob.glob(args.path)])
-    cols_list = [x for x in cols._asdict() if x not in ['A1A2', 'CHRPOS', 'CHRPOSA1A2', 'SNP', 'CHR', 'BP', cols.PVAL, 'A1', 'A2']]
+    cols_list = [x for x in cols._asdict() if x not in ['A1A2', 'CHRPOS', 'CHRPOSA1A2', 'SNP', 'CHR', 'BP', cols.P, 'A1', 'A2']]
     log.log('{f}\t{n}\t{c}'.format(f='file'.ljust(ml),n='#snp'.ljust(9),c='\t'.join([x.replace('NCONTROL', 'NCONT.') for x in cols_list])))
     for file in glob.glob(args.path):
         if not os.path.isfile(file): continue
@@ -1687,7 +1687,7 @@ def mat_to_csv(args, log):
             df['Z'] = sumstats[key]
             log.log('Found zvec, {} non-nan values.'.format(np.sum(~np.isnan(sumstats[key]))))
         if key.lower().startswith('logpvec'):
-            df[cols.PVAL] = np.power(10, -sumstats[key])
+            df[cols.P] = np.power(10, -sumstats[key])
             log.log('Found logpvec, {} non-nan values.'.format(np.sum(~np.isnan(sumstats[key]))))
         if key.lower().startswith('nvec'):
             df['N'] = sumstats[key]
