@@ -992,7 +992,7 @@ def make_pvalue(args, log):
     if 'PVAL' in columns:
         log.log('PVAL already exists, nothing to be done.')
         return
-    if ('Z' not in columns) and (('BETA' not in columns) or ('SE' not in column)):
+    if ('Z' not in columns) and (('BETA' not in columns) or ('SE' not in columns)):
         raise(ValueError("Neither Z nor BETA/SE are available in the input summary stats file"))
 
     log.log('Reading summary statistics file {}...'.format(args.sumstats))
