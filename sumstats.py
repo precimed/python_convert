@@ -679,7 +679,7 @@ def make_csv(args, log):
                 for original in original_file_cname:
                     cname = cname_map.get(clean_header(original))
 
-                    if cname and args.output_output_cleansumstats_meta:
+                    if cname and args.output_cleansumstats_meta:
                         update_cleansumstats_cols(cleansumstats_cols, cname, original)
 
                     # note that in --output-cleansumstats-meta mode we do take N/NCASE/NCONTROL columns
