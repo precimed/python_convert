@@ -717,7 +717,7 @@ def make_csv(args, log):
                     # add a dummy stats_TotalN
                     if 'stats_TotalN' not in dict(cleansumstats_cols): cleansumstats_cols.append(('stats_TotalN', '1'))
                     out_f.write(get_meta_template().format(
-                        path_sumStats='',
+                        path_sumStats=os.path.basename(args.sumstats),
                         cols_definition = '\n'.join([f'{cname}: {original}' for cname, original in cleansumstats_cols])
                     ))
                     break
