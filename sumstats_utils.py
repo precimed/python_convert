@@ -127,6 +127,7 @@ default_cnames = {
     'ALLELE1': cols.A1,
     'ALLELE_1': cols.A1,
     'EFFECT_ALLELE': cols.A1,
+    'EFFECTALLELE': cols.A1,
     'REFERENCE_ALLELE': cols.A1,
     'INC_ALLELE': cols.A1,
     'EA': cols.A1,
@@ -135,6 +136,7 @@ default_cnames = {
     'ALLELE2': cols.A2,
     'ALLELE_2': cols.A2,
     'OTHER_ALLELE': cols.A2,
+    'OTHERALLELE': cols.A2,
     'NON_EFFECT_ALLELE': cols.A2,
     'NON_EFF_ALLELE': cols.A2,
     'DEC_ALLELE': cols.A2,
@@ -142,18 +144,22 @@ default_cnames = {
     # N
     'N': cols.N,
     'SAMPLESIZE': cols.N,  
+    'WEIGHT': cols.N,  # metal does this. possibly risky.
+    # NCASE
     'NCASE': cols.NCASE,
     'CASES_N': cols.NCASE,
     'N_CASE': cols.NCASE,
     'N_CASES': cols.NCASE,
-    'N_CONTROLS': cols.NCONTROL,
     'N_CAS': cols.NCASE,
-    'N_CON': cols.NCONTROL,
     'N_CASE': cols.NCASE,
+    'CASEN': cols.NCASE,
+    # NCONTROL
+    'N_CONTROLS': cols.NCONTROL,
+    'N_CON': cols.NCONTROL,
+    'CONTROLN': cols.NCONTROL,
     'NCONTROL': cols.NCONTROL,
     'CONTROLS_N': cols.NCONTROL,
     'N_CONTROL': cols.NCONTROL,
-    'WEIGHT': cols.N,  # metal does this. possibly risky.
     # SIGNED STATISTICS
     'ZSCORE': cols.Z,
     'Z-SCORE': cols.Z,
