@@ -51,10 +51,36 @@ def align_alleles(z, alleles):
         raise KeyError('Incompatible alleles. ')
     return z
 
-Cols = namedtuple('Cols', ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'EA', 'N', 'NCASE', 'NCONTROL', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2', 'CHRPOSA1A2', 'DIRECTION'])
-cols = Cols._make(        ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'EA', 'N', 'NCASE', 'NCONTROL', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2', 'CHRPOSA1A2', 'DIRECTION'])
+Cols = namedtuple('Cols', ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'EA', 'N', 'NCASE', 'NCONTROL', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2', 'CHRPOSA1A2', 'DIRECTION', 'ORL95', 'ORU95'])
+cols = Cols._make(        ['SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2', 'EA', 'N', 'NCASE', 'NCONTROL', 'Z', 'OR', 'BETA', 'LOGODDS', 'SE', 'INFO', 'FRQ', 'NSTUDY', 'CHRPOS', 'A1A2', 'CHRPOSA1A2', 'DIRECTION', 'ORL95', 'ORU95'])
 cols_type_map =           {'SNP':str, 'CHR':int, 'BP':int, 'PVAL':np.float64, 'A1':str, 'A2':str, 'EA':str, 'N':float, 'NCASE':float, 'NCONTROL':float, 'Z':float, 'OR':float, 'BETA':float,
-                           'LOGODDS':float, 'SE':float, 'INFO':float, 'FRQ':float, 'NSTUDY':int, 'CHRPOS':str, 'A1A2':str, 'CHRPOSA1A2':str, 'DIRECTION':str }
+                           'LOGODDS':float, 'SE':float, 'INFO':float, 'FRQ':float, 'NSTUDY':int, 'CHRPOS':str, 'A1A2':str, 'CHRPOSA1A2':str, 'DIRECTION':str, 'ORL95':float, 'ORU95':float}
+cname_to_cleansumstats_map = {
+    'SNP': 'col_SNP',
+    'CHR': 'col_CHR', 
+    'BP': 'col_POS',
+    'PVAL': 'col_P',
+    'A1': 'col_EffectAllele',
+    'A2': 'col_OtherAllele',
+    'N': 'col_N',
+    'NCASE': 'col_CaseN',
+    'NCONTROL': 'col_ControlN',
+    'Z': 'col_Z',
+    'OR': 'col_OR',
+    'BETA': 'col_BETA',
+    'SE': 'col_SE',
+    'LOGODDS': 'col_BETA',
+    'INFO': 'col_INFO',
+    'FRQ': 'col_EAF',
+    'DIRECTION': 'col_Direction',
+    'ORL95': 'col_ORL95',
+    'ORU95': 'col_ORU95',
+    # 'NSTUDY': 'col_studyN'  - not supported by cleansumstats
+    # col_OAF, col_Notes - not supported by python_convert
+    # CHRPOSA1A2, CHRPOS -  require special handling (see update_cleansumstats_cols in sumstats.py)
+    # A1A2 - incompatible
+}
+
 null_values = {
     cols.LOGODDS: 0,
     cols.BETA: 0,
@@ -135,6 +161,8 @@ default_cnames = {
     'Z': cols.Z,
     'MTAG_Z': cols.Z,
     'OR': cols.OR,
+    'ORL95': cols.ORL95,
+    'ORU95': cols.ORU95,
     'B': cols.BETA,
     'BETA': cols.BETA,
     'MTAG_BETA': cols.BETA,
@@ -172,6 +200,8 @@ describe_cname = {
     cols.NCONTROL: 'Number of controls',
     cols.Z: 'Z-score (0 --> no effect; above 0 --> A1 is trait/risk increasing)',
     cols.OR: 'Odds ratio (1 --> no effect; above 1 --> A1 is risk increasing)',
+    cols.ORL95: 'Lower 95%% confidence bound of OR',
+    cols.ORU95: 'Upper 95%% confidence bound of OR',
     cols.BETA: '[linear/logistic] regression coefficient (0 --> no effect; above 0 --> A1 is trait/risk increasing)',
     cols.LOGODDS: 'Log odds ratio (0 --> no effect; above 0 --> A1 is risk increasing)',
     cols.SE: 'standard error of the effect size',

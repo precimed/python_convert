@@ -103,6 +103,8 @@ def parse_args(args):
         help="List of non-standard column names from --sumstats file to keep in --out file. Columns names will UPPERCASEed.")
     parser_csv.add_argument("--keep-all-cols", action="store_true", default=False,
         help="Keep all non-standard column names from --sumstats file to keep in --out file. Columns names will UPPERCASEed.")
+    parser_csv.add_argument("--output-cleansumstats-meta", action="store_true", default=False,
+        help="Instead of converting the file output meta-information file for https://github.com/BioPsyk/cleansumstats/")
     parser_csv.set_defaults(func=make_csv)
 
     # 'variantid' utility : load raw summary statistics file and convert it into a standardized format
@@ -569,6 +571,55 @@ def check_output_file(file, force=False):
     output_dir = os.path.dirname(file)
     if output_dir and not os.path.isdir(output_dir): os.makedirs(output_dir)  # ensure that output folder exists
 
+def update_cleansumstats_cols(cleansumstats_cols, cname, original):
+    if cname == 'CHRPOSA1A2':
+        cleansumstats_cols.append(('col_CHR', original))
+        cleansumstats_cols.append(('col_POS', original))
+        cleansumstats_cols.append(('col_EffectAllele', original))
+        cleansumstats_cols.append(('col_OtherAllele', original))
+        return
+    if cname == 'CHRPOS':
+        cleansumstats_cols.append(('col_CHR', original))
+        cleansumstats_cols.append(('col_POS', original))
+        return
+    if cname == 'A1A2':
+        raise(ValueError('--a1a2 not supported for --output-cleansumstats-meta'))
+
+    if cname in cname_to_cleansumstats_map:
+        cleansumstats_cols.append((cname_to_cleansumstats_map[cname], original))
+    else:
+        log.log(f'Warning: {cname} not supported by --output-cleansumstats-meta')
+
+def get_meta_template():
+    return '''cleansumstats_metafile_date: '2020-12-31'
+cleansumstats_metafile_user: username
+cleansumstats_version: 1.0.0-alpha
+path_sumStats: {path_sumStats}
+{cols_definition}
+stats_GCMethod: none
+stats_Model: linear
+stats_Notes: 'dummy description'
+stats_TraitType: quantitative
+stats_neglog10P: false
+study_AccessDate: '2020-12-31'
+study_Ancestry: EUR
+study_Array: meta
+study_FilePortal: http://website.org/dummydata
+study_FileURL: http://website.org/dummydata/file.txt.gz
+study_Gender: mixed
+study_ImputePanel: HapMap
+study_ImputeSoftware: meta
+study_PMID: 666
+study_PhasePanel: meta
+study_PhaseSoftware: meta
+study_PhenoCode:
+- EFO:0000000
+study_PhenoDesc: 'phenotype description'
+study_Title: dummy_title
+study_Use: open
+study_Year: 2020
+'''
+
 def make_csv(args, log):
     """
     Based on file with summary statistics creates a tab-delimited csv file with standard columns.
@@ -624,11 +675,23 @@ def make_csv(args, log):
 
                 # Describe the mapping between old and new column names that we are going to perform
                 log.log('Interpret column names as follows:')
+                cleansumstats_cols = []
                 for original in original_file_cname:
                     cname = cname_map.get(clean_header(original))
-                    if (args.ncase_val is not None) and (cname==cols.NCASE): cname=None
-                    if (args.ncontrol_val is not None) and (cname==cols.NCONTROL): cname=None
-                    if (args.n_val is not None) and (cname==cols.N): cname=None
+
+                    if cname:
+                        update_cleansumstats_cols(cleansumstats_cols, cname, original)
+
+                    if (args.ncase_val is not None) and (cname==cols.NCASE):
+                        cleansumstats_cols.append(('stats_CaseN', args.ncase_val))
+                        cname=None
+                    if (args.ncontrol_val is not None) and (cname==cols.NCONTROL):
+                        cleansumstats_cols.append(('stats_ControlN', args.ncontrol_val))
+                        cname=None
+                    if (args.n_val is not None) and (cname==cols.N):
+                        cleansumstats_cols.append(('stats_TotalN', args.n_val))
+                        cname=None
+
                     if cname: column_status = describe_cname[cname]
                     elif args.keep_all_cols or (original.upper() in args.keep_cols): column_status = "Will be kept as unrecognized column"
                     else: column_status = "Will be deleted"
@@ -645,6 +708,15 @@ def make_csv(args, log):
                 effect_size_column_count = int(cols.Z in final_cols) + int(cols.OR in final_cols) + int(cols.BETA in final_cols) + int(cols.LOGODDS in final_cols)
                 if effect_size_column_count == 0: log.log('Warning: None of the columns indicate effect direction: typically either BETA, OR, LOGODDS or Z column is expected')
                 if effect_size_column_count > 1: log.log('Warning: Multiple columns indicate effect direction: typically only one of BETA, OR, LOGODDS and Z columns is expected')
+
+                if args.output_cleansumstats_meta:
+                    # add a dummy stats_TotalN
+                    if 'stats_TotalN' not in dict(cleansumstats_cols): cleansumstats_cols.append(('stats_TotalN', '1'))
+                    out_f.write(get_meta_template().format(
+                        path_sumStats='',
+                        cols_definition = '\n'.join([f'{cname}: {original}' for cname, original in cleansumstats_cols])
+                    ))
+                    break
 
             if not args.keep_all_cols:
                 chunk.drop([x for x in chunk.columns if ((x not in cname_map) and (x not in args.keep_cols))], axis=1, inplace=True)
@@ -702,11 +774,12 @@ def make_csv(args, log):
                 log.log('Abort reading input file due to --preview flag.')
                 break
 
+    if not args.output_cleansumstats_meta:
         if n_snps == 0: raise(ValueError('Input summary stats file appears to be empty.'))
         log.log("Done. {n} SNPs saved to {f}".format(n=n_snps, f=args.out))
         log.log('Sample size: N={} NCASE={} NCONTROL={}'.format(max_n_val, max_ncase_val, max_ncontrol_val))
 
-    if (not args.skip_validation) and (args.out != sys.stdout):
+    if (not args.skip_validation) and (not args.output_cleansumstats_meta) and (args.out != sys.stdout):
         log.log('Validate the resulting file...')
         reader = pd.read_csv(args.out, sep='\t', chunksize=args.chunksize)
         n_snps = 0
