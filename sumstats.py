@@ -588,7 +588,7 @@ def update_cleansumstats_cols(cleansumstats_cols, cname, original):
     if cname in cname_to_cleansumstats_map:
         cleansumstats_cols.append((cname_to_cleansumstats_map[cname], original))
     else:
-        log.log(f'Warning: {cname} not supported by --output-cleansumstats-meta')
+        log.log('Warning: {} not supported by --output-cleansumstats-meta'.format(cname))
 
 def get_meta_template():
     return '''cleansumstats_metafile_date: '2020-12-31'
@@ -679,7 +679,7 @@ def make_csv(args, log):
                 for original in original_file_cname:
                     cname = cname_map.get(clean_header(original))
 
-                    if cname:
+                    if cname and args.output_output_cleansumstats_meta:
                         update_cleansumstats_cols(cleansumstats_cols, cname, original)
 
                     # note that in --output-cleansumstats-meta mode we do take N/NCASE/NCONTROL columns
@@ -718,7 +718,7 @@ def make_csv(args, log):
                     if 'stats_TotalN' not in dict(cleansumstats_cols): cleansumstats_cols.append(('stats_TotalN', '1'))
                     out_f.write(get_meta_template().format(
                         path_sumStats=os.path.basename(args.sumstats),
-                        cols_definition = '\n'.join([f'{cname}: {original}' for cname, original in cleansumstats_cols])
+                        cols_definition = '\n'.join(['{}: {}'.format(cname, original) for cname, original in cleansumstats_cols])
                     ))
                     break
 
