@@ -687,13 +687,13 @@ def make_csv(args, log):
                     # this is difference from when we actually produce a .csv file - in this case
                     # --n-val / --ncontrol-val / --ncase-val OVERWRITES the original sample size column(s)
                     if (args.ncase_val is not None) and (cname==cols.NCASE):
-                        cleansumstats_cols.append(('stats_CaseN', args.ncase_val))
+                        cleansumstats_cols.append(('stats_CaseN', int(args.ncase_val)))
                         if not args.output_cleansumstats_meta: cname=None
                     if (args.ncontrol_val is not None) and (cname==cols.NCONTROL):
-                        cleansumstats_cols.append(('stats_ControlN', args.ncontrol_val))
+                        cleansumstats_cols.append(('stats_ControlN', int(args.ncontrol_val)))
                         if not args.output_cleansumstats_meta: cname=None
                     if (args.n_val is not None) and (cname==cols.N):
-                        cleansumstats_cols.append(('stats_TotalN', args.n_val))
+                        cleansumstats_cols.append(('stats_TotalN', int(args.n_val)))
                         if not args.output_cleansumstats_meta: cname=None
 
                     if cname: column_status = describe_cname[cname]
