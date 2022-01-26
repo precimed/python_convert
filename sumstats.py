@@ -597,7 +597,7 @@ cleansumstats_version: 1.0.0-alpha
 path_sumStats: {path_sumStats}
 {cols_definition}
 stats_GCMethod: none
-stats_Model: linear
+stats_Model: {linear_or_logistic}
 stats_Notes: 'dummy description'
 stats_TraitType: quantitative
 stats_neglog10P: false
@@ -718,7 +718,8 @@ def make_csv(args, log):
                     if 'stats_TotalN' not in dict(cleansumstats_cols): cleansumstats_cols.append(('stats_TotalN', '1'))
                     out_f.write(get_meta_template().format(
                         path_sumStats=os.path.basename(args.sumstats),
-                        cols_definition = '\n'.join(['{}: {}'.format(cname, original) for cname, original in cleansumstats_cols])
+                        cols_definition = '\n'.join(['{}: {}'.format(cname, original) for cname, original in cleansumstats_cols]),
+                        linear_or_logistic = 'logistic' if (cols.OR in final_cols) else 'linear'
                     ))
                     break
 
