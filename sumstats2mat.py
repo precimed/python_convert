@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 import os
-import sys
-import pandas as pd
 import argparse
+import pandas as pd
 import scipy.io as sio
 import numpy as np
 from collections import namedtuple
@@ -160,7 +159,7 @@ if __name__ == "__main__":
     parser_mat = argparse.ArgumentParser(description="Create mat files that can "
         "be used as an input for pleiofdr analysis (https://github.com/precimed/pleiofdr/). "
         "Takes a .csv file with summary statistics file as input. The file can be compressed with gzip. "
-        "Require columns: SNP, P, A1, A2, Z, and sample size column (either N, or CaseN and ControlN). "
+        "Require columns: RSID, P, EffectAllele, OtherAllele, and sample size column (either N, or CaseN and ControlN). "
         "Creates corresponding mat files which can be used as an input for pleiofdr analysis. "
         "Only SNPs from the reference file are considered. "
         "Zscores of strand ambiguous SNPs are set to NA. ")
@@ -179,4 +178,3 @@ if __name__ == "__main__":
 
     args = parser_mat.parse_args()
     make_mat(args)
-    
