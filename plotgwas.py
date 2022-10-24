@@ -188,7 +188,6 @@ def make_manhattan(args):
     # set y axis lims
     _, y_max = ax.get_ylim()
     y_min = min(-np.log10(df.P.max()) for df in dfs)
-    print("ymin = ", y_min)
     ax.set_ylim((y_min, y_max))
 
     for outf in args.out:
@@ -239,12 +238,15 @@ def make_miami(args):
     ax_bottom.legend(loc="lower right", fontsize=16, frameon=False, labelcolor=legend_label_colors, markerscale=0, scatterpoints=1)
 
     # set y axis lims
-    _, y_max = ax_top.get_ylim()
-    y_min = min(-np.log10(df.P.max()) for df in dfs[:len(args.config_top)])
-    ax_top.set_ylim((y_min, y_max))
-    y_max, _ = ax_bottom.get_ylim()
-    y_min = min(-np.log10(df.P.max()) for df in dfs[len(args.config_top):])
-    ax_bottom.set_ylim((y_max, y_min))
+    _, y_max_top = ax_top.get_ylim()
+    y_min_top = min(-np.log10(df.P.max()) for df in dfs[:len(args.config_top)])
+    y_max_bottom, _ = ax_bottom.get_ylim()
+    y_min_bottom = min(-np.log10(df.P.max()) for df in dfs[len(args.config_top):])
+    if any([c["allign_y_max"] for c in configs]):
+        y_max_top = max(y_max_top, y_max_bottom)
+        y_max_bottom = y_max_top
+    ax_top.set_ylim((y_min_top, y_max_top))
+    ax_bottom.set_ylim((y_max_bottom, y_min_bottom))
 
     for outf in args.out:
         plt.savefig(outf, facecolor='w', dpi=300)
