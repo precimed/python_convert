@@ -8,13 +8,10 @@ Output: tab-separated csv file with two columns ID and UID, where ID column is t
     AA2 = A1_complementary if AA1 == A2_complementary,
     min is taken based on lexicographical order.
     If either A1 or A2 contains non-ATGC char, original ID is retained, i.e. UID = ID. 
-
 Example:
 python make_universal_variant_ids.py --fname /cluster/projects/p33/users/alexeas/hrc/HRC.r1-1.GRCh37.wgs.mac5.sites.tab.gz \
         --chr "#CHROM" --bp POS --a1 REF --a2 ALT --id ID --out hrc.hg19.uid.txt
-
 Resulting hrc.hg19.uid.txt file will contain two columns (no header): (1) original ID from the input file, (2) constructed univeral ID (UID)
-
 Assume you need to map different type of variant ids between two different files:
     FILE1 has rsid
     FILE2 has chr:bp
@@ -37,7 +34,7 @@ def std_format(df, col_names, std_col_names):
     # - retain only relevant columns (col_names) in the specified order
     # - rename columns to standard names, std_col_names[i] should be an std col name for col_names[i]
     # - A1 and A2 to uppercase
-    df = df[col_names]
+    df = df[col_names].copy(deep=True)
     col_rename_dict = dict(zip(col_names, std_col_names))
     df.rename(columns=col_rename_dict, inplace=True)
     df["A1"] = df["A1"].str.upper()
@@ -73,18 +70,25 @@ parser.add_argument("--bp", default="BP", help="Position column.")
 parser.add_argument("--a1", default="A1", help="Allele 1 column.")
 parser.add_argument("--a2", default="A2", help="Allele 2 column.")
 parser.add_argument("--id", default="ID", help="Variant ID column.")
+parser.add_argument("--save-all", action="store_true", help="Save all columns from the input file.")
 parser.add_argument("--out", help="Output file name.")
 args = parser.parse_args()
 
 
 # Main -------------------------------------
 col_names = [args.chr, args.bp, args.a1, args.a2, args.id] # the order should correspond to the order in STD_COL_NAMES
-df = pd.read_csv(args.fname, delim_whitespace=True, usecols=col_names, dtype=str)
+df = pd.read_csv(args.fname, delim_whitespace=True, usecols=None if args.save_all else col_names, dtype=str)
+assert not "UID" in df.columns
 print(f"{df.shape[0]} variants loaded from {args.fname}")
-df = std_format(df, col_names, STD_COL_NAMES)
-uid_col = get_uid_col(df)
+df_std = std_format(df, col_names, STD_COL_NAMES)
+uid_col = get_uid_col(df_std)
+assert df.shape[0] == df_std.shape[0]
 df["UID"] = uid_col
 
-df[["ID", "UID"]].to_csv(args.out, sep='\t', index=False, header=False)
+if args.save_all:
+    df.to_csv(args.out, sep='\t', index=False)
+else:
+    df[[args.id, "UID"]].to_csv(args.out, sep='\t', index=False, header=False)
+
 print(f"{args.out} saved.")
 
