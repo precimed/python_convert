@@ -1664,7 +1664,7 @@ def make_clump(args, log):
     log.log('{} candidate SNPs reported to {}.snps.csv'.format(len(df_cand), args.out))
 
     df_indep=df_cand[df_cand['CAND_SNP'] == df_cand['INDEP_SNP']].copy()
-    df_indep.drop(['CAND_BP','CAND_SNP'], axis=1, inplace=True)
+    df_indep.drop(['CAND_BP','CAND_SNP', 'R2'], axis=1, inplace=True)
     df_indep.to_csv('{}.indep.csv'.format(args.out), sep='\t', index=False)
     log.log('{} independent significant SNPs reported to {}.snps.csv'.format(len(df_indep), args.out))
 
