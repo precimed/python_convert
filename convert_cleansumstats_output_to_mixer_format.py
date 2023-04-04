@@ -20,6 +20,17 @@ if __name__ == "__main__":
     if 'B' in df.columns: df.rename(columns={'B':'BETA'}, inplace=True)
     if 'EAF' in df.columns: df.rename(columns={'EAF':'FRQ'}, inplace=True)
     print('renamed  columns: ' + ' '.join(df.columns))
+
+    sumstats_len = len(df)
+    df['BP'] = pd.to_numeric(df['BP'], errors='coerce')
+    df.dropna(subset=['BP'], inplace=True)
+    df['BP'] = df['BP'].astype(int)
+    print(f'Drop {sumstats_len - len(df)} variants due to non-numeric or missing values in BP column')
+
+    idx = (df['CHR'] == 6) & (df['BP'] >= 25e6) & (df['BP'] < 35e6)
+    print(f'drop MHC variants (chr6:25-35): {np.sum(idx)} variants removed, {np.sum(~idx)} variants retained')
+    df = df[~idx].copy()
+
     print(f'writing {fname_out}...')    
     df.to_csv(fname_out, sep='\t', index=False)
     print('done.')
