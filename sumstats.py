@@ -756,7 +756,7 @@ def make_csv(args, log):
             # Ensure that alleles are coded as capital letters
             if cols.A1 in chunk.columns: chunk[cols.A1] = chunk[cols.A1].str.upper().str.strip()
             if cols.A2 in chunk.columns: chunk[cols.A2] = chunk[cols.A2].str.upper().str.strip()
-
+            
             # Populate sample size columns (NCASE, NCONTROL, N)
             if args.ncase_val is not None: chunk[cols.NCASE] = args.ncase_val
             if args.ncontrol_val is not None: chunk[cols.NCONTROL] = args.ncontrol_val
@@ -1390,6 +1390,9 @@ def make_lift(args, log):
 
     indices_with_old_chrpos = range(len(df))  # indices with original chr:pos
     fixes = []
+    if cols.SNP in df:
+        df[cols.SNP] = df[cols.SNP].apply(str.lower)
+
     if (cols.SNP in df) and (lift_rs is not None):
         # Fix1 brings forward SNP rs# numbers and set SNP rs# to None for SNPs found in SNPHistory table
         df[cols.SNP], stats = lift_rs.lift(df[cols.SNP])
@@ -1713,12 +1716,13 @@ def make_ls(args, log):
     ml = max([len(os.path.basename(file).replace('.csv.gz', '')) for file in glob.glob(args.path)])
     cols_list = [x for x in cols._asdict() if x not in ['A1A2', 'CHRPOS', 'CHRPOSA1A2', 'SNP', 'CHR', 'BP', 'PVAL', 'A1', 'A2']]
     log.log('{f}\t{n}\t{c}'.format(f='file'.ljust(ml),n='#snp'.ljust(9),c='\t'.join([x.replace('NCONTROL', 'NCONT.') for x in cols_list])))
+    result = []
     for file in glob.glob(args.path):
         if not os.path.isfile(file): continue
         if '_noMHC' in file: continue
         num_snps = np.nan; n = np.nan; ncase = np.nan; ncontrol = np.nan 
         try:
-            file_log = os.path.splitext(file)[0] + '.log'
+            file_log = file.replace('.sumstats.gz', '.log')
             if os.path.isfile(file_log):
                 lines = open(file_log, 'r').readlines()
                 num_snps = [int(x.group(1)) for x in [re.search('([0-9]+) SNPs saved to', line.strip()) for line in lines] if x][0]
@@ -1739,8 +1743,10 @@ def make_ls(args, log):
                                         ncontrol if (x == 'NCONTROL') else
                                         'YES' if x in chunk
                                         else '-') for x in cols_list]
-            log.log('{f}\t{n}\t{c}'.format(f=os.path.basename(file).replace('.csv.gz', '').ljust(ml), c='\t'.join(yes_no_or_sample_size),n=str(num_snps).ljust(9)))
+            result.append('{f}\t{n}\t{c}'.format(f=os.path.basename(file).replace('.sumstats.gz', '').ljust(ml), c='\t'.join(yes_no_or_sample_size),n=str(num_snps).ljust(9)))
             break
+    for x in sorted(result):
+        log.log(x)    
     log.log('Columns description:')
     for cname in sorted(cols._asdict()):
         log.log('{c}\t{d}'.format(c=cname, d=describe_cname[cname]))
