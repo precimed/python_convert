@@ -1023,7 +1023,7 @@ def make_zscore(args, log):
         # if signed_effect is true, take effect column as string to handle correctly
         # case of truncated numbers, e.g.: 0.00 and -0.00 should have different sign
         signed_effect = False if args.effect == cols.OR else True
-        effect_col_dtype_map = {args.effect: (str if signed_effect else np.float)}
+        effect_col_dtype_map = {args.effect: (str if signed_effect else float)}
 
     log.log('Reading summary statistics file {}...'.format(args.sumstats))
     reader = pd.read_csv(args.sumstats, sep='\t', chunksize=args.chunksize,
